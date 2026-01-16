@@ -20,6 +20,16 @@ urlpatterns = [
     path("api/identity/", include("accounts.urls")),
     path("api/operators/", include("operators.urls")),
     path("api/kyc/", include("kyc.urls")),
+
+
+    path("api/masters/",include("masters.urls")),
+    path("api/operations/", include("operations.urls")),
+    path("api/assignments/", include("assignments.urls")),
+
+
+    path("api/attendance/", include("attendance.urls")),
+    path("api/support/", include("support.urls")),
+    path("api/reports/", include("reports.urls")),
 ]
 
 # Serve media files in development

@@ -10,8 +10,8 @@ class ApiClient {
       : dio = Dio(
           BaseOptions(
             baseUrl: apiBaseUrl,
-            connectTimeout: const Duration(seconds: 20),
-            receiveTimeout: const Duration(seconds: 20),
+            connectTimeout: const Duration(seconds: 60),
+            receiveTimeout: const Duration(seconds: 60),
             headers: {'Content-Type': 'application/json'},
           ),
         ) {
@@ -28,6 +28,13 @@ class ApiClient {
           // If unauthorized, try refresh once then retry original request
           // Prevent infinite retry loops by checking if we already attempted refresh
           if (err.response?.statusCode == 401) {
+            // CRITICAL FIX: If the failing request IS the refresh request, do not loop.
+            if (err.requestOptions.path.contains('/token/refresh/')) {
+               await storage.clearAll();
+               handler.next(err);
+               return;
+            }
+
             // Check if this request already attempted refresh (to prevent infinite loop)
             final alreadyRefreshed = err.requestOptions.extra['_refresh_attempted'] == true;
             if (alreadyRefreshed) {
@@ -80,5 +87,95 @@ class ApiClient {
 
     // Optional: log headers to confirm Authorization is sent
     dio.interceptors.add(LogInterceptor(requestHeader: true, responseHeader: false));
+  }
+
+  Future<List<dynamic>> getMyDuties() async {
+    final response = await dio.get('/api/assignments/my-duties/');
+    return response.data;
+  }
+  
+  Future<void> confirmAssignment(String assignmentId) async {
+    await dio.post('/api/assignments/$assignmentId/confirm/');
+  }
+
+  Future<void> checkIn(String assignmentId, double lat, double long, String? imagePath) async {
+    try {
+      final formData = FormData.fromMap({
+        "assignment_id": assignmentId,
+        "activity_type": "CHECK_IN",
+        "latitude": lat,
+        "longitude": long,
+      });
+
+      if (imagePath != null) {
+        formData.files.add(MapEntry(
+          "selfie",
+          await MultipartFile.fromFile(imagePath, filename: "selfie.jpg"),
+        ));
+      }
+
+      await dio.post('/api/attendance/logs/', data: formData);
+    } catch (e) {
+      if (e is DioException) {
+        throw Exception(e.response?.data?['detail'] ?? "Check-in failed");
+      }
+      throw Exception("Check-in failed: $e");
+    }
+  }
+
+  Future<void> checkOut(String assignmentId, double lat, double long) async {
+    try {
+      await dio.post('/api/attendance/logs/', data: {
+        "assignment_id": assignmentId,
+        "activity_type": "CHECK_OUT",
+        "latitude": lat,
+        "longitude": long,
+      });
+    } catch (e) {
+      if (e is DioException) {
+        throw Exception(e.response?.data?['detail'] ?? "Check-out failed");
+      }
+      throw Exception("Check-out failed: $e");
+    }
+  }
+
+  // --- Support / Incidents ---
+
+  Future<List<dynamic>> getIncidentCategories() async {
+    final response = await dio.get('/api/support/categories/');
+    return response.data;
+  }
+
+  Future<void> reportIncident({
+    required String assignmentId,
+    required String categoryId,
+    required String priority,
+    required String description,
+    List<String> imagePaths = const [],
+  }) async {
+    try {
+      final formData = FormData.fromMap({
+        'assignment_id': assignmentId,
+        'category_id': categoryId,
+        'priority': priority,
+        'description': description,
+        'status': 'OPEN',
+      });
+
+      // Append multiple files
+      for (final path in imagePaths) {
+        formData.files.add(MapEntry(
+          'attachments',
+          await MultipartFile.fromFile(path),
+        ));
+      }
+
+      await dio.post('/api/support/incidents/', data: formData);
+    } catch (e) {
+      if (e is DioException) {
+        throw Exception(e.response?.data?['detail'] ?? "Report failed: ${e.message}");
+      }
+      throw Exception("Report failed: $e");
+    }
   }
 }

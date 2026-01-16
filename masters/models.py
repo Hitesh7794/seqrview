@@ -148,3 +148,49 @@ class CenterMaster(TimeStampedUUIDModel):
     
     def __str__(self):
         return f"{self.name} ({self.center_code})"
+
+
+
+
+class RoleMaster(TimeStampedUUIDModel):
+    
+    code = models.CharField(max_length=50, unique=True, db_index=True)
+    name = models.CharField(max_length=100)
+    description = models.TextField(null=True, blank=True)
+    instruction = models.TextField(null=True, blank=True)
+    
+    
+    training_video_url = models.URLField(max_length=500, null=True, blank=True)
+    requires_training_completion = models.BooleanField(default=False)
+    
+    
+    dress_code = models.CharField(max_length=255, null=True, blank=True)
+    age_min = models.IntegerField(null=True, blank=True)
+    age_max = models.IntegerField(null=True, blank=True)
+    
+    GENDER_CHOICES = (
+        ('MALE', 'Male'),
+        ('FEMALE', 'Female'),
+        ('ALL', 'All'),
+    )
+    gender_requirement = models.CharField(max_length=20, choices=GENDER_CHOICES, default='ALL')
+    
+
+    tag_color = models.CharField(max_length=50, null=True, blank=True)
+    
+
+    default_pay_rate = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    
+
+    is_active = models.BooleanField(default=True)
+    
+    class Meta:
+        db_table = 'role'
+        indexes = [
+            models.Index(fields=['code']),
+            models.Index(fields=['is_active']),
+        ]
+        ordering = ['name']
+    
+    def __str__(self):
+        return f"{self.name} ({self.code})"

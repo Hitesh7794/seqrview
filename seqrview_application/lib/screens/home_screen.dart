@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../app/session_controller.dart';
+import '../models/assignment.dart';
+import 'duties/my_duties_screen.dart';
+
+
 
 class HomeScreen extends StatefulWidget {
   final SessionController session;
@@ -13,6 +17,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   Map<String, dynamic>? _profileData;
   Map<String, dynamic>? _userData;
+  List<Assignment> _recentDuties = [];
   bool _loading = true;
   String? _error;
 
@@ -29,14 +34,25 @@ class _HomeScreenState extends State<HomeScreen> {
         _error = null;
       });
 
-      // Fetch profile and user data in parallel
+      // Fetch profile, user data, and duties in parallel
       final profileRes = await widget.session.api.dio.get('/api/operators/profile/');
       final userRes = await widget.session.api.dio.get('/api/identity/me/');
+      final dutiesRes = await widget.session.api.getMyDuties();
 
       if (mounted) {
         setState(() {
           _profileData = profileRes.data as Map<String, dynamic>?;
           _userData = userRes.data as Map<String, dynamic>?;
+          
+          final List<Assignment> loaded = (dutiesRes as List)
+              .map((json) => Assignment.fromJson(json))
+              .toList();
+          // Filter for pending/confirmed and take top 2
+          _recentDuties = loaded
+              .where((a) => a.status == 'PENDING' || a.status == 'CONFIRMED')
+              .take(2)
+              .toList();
+              
           _loading = false;
         });
       }
@@ -45,7 +61,7 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() {
           _error = e is DioException
               ? (e.response?.data?['detail']?.toString() ?? "Failed to load data")
-              : "Failed to load data";
+              : "Failed to load data: $e";
           _loading = false;
         });
       }
@@ -154,136 +170,98 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                         const SizedBox(height: 16),
-
-                        // KYC Status Card
-                        Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  "KYC Status",
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                _buildInfoRow(
-                                  "Status",
-                                  _getKycStatusDisplay(_profileData?['kyc_status']),
-                                  _profileData?['kyc_status'] == 'VERIFIED'
-                                      ? Colors.green
-                                      : Colors.orange,
-                                ),
-                                const SizedBox(height: 8),
-                                _buildInfoRow(
-                                  "Method",
-                                  _getKycMethodDisplay(_profileData?['verification_method']),
-                                  null,
-                                ),
-                                if (_profileData?['kyc_verified_at'] != null) ...[
-                                  const SizedBox(height: 8),
-                                  _buildInfoRow(
-                                    "Verified On",
-                                    _formatDate(_profileData?['kyc_verified_at']),
-                                    null,
-                                  ),
-                                ],
-                              ],
-                            ),
+                        
+                        // Recent Duties Section
+                        const Text(
+                          "Upcoming Duties",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
-                        const SizedBox(height: 16),
-
-                        // Profile Status Card
-                        Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  "Profile Information",
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
+                        const SizedBox(height: 8),
+                        if (_recentDuties.isEmpty)
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Center(
+                                child: Text(
+                                  "No upcoming duties assigned.",
+                                  style: TextStyle(color: Colors.grey[600]),
+                                ),
+                              ),
+                            ),
+                          )
+                        else
+                          ..._recentDuties.map((assignment) {
+                            final shift = assignment.shiftCenter.shift;
+                            final center = assignment.shiftCenter.center;
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              child: ListTile(
+                                leading: CircleAvatar(
+                                  backgroundColor: assignment.status == 'CONFIRMED' 
+                                      ? Colors.green.shade100 
+                                      : Colors.orange.shade100,
+                                  child: Icon(
+                                    assignment.status == 'CONFIRMED' ? Icons.check : Icons.access_time,
+                                    color: assignment.status == 'CONFIRMED' ? Colors.green : Colors.orange,
                                   ),
                                 ),
-                                const SizedBox(height: 12),
-                                if (_profileData?['date_of_birth'] != null)
-                                  _buildInfoRow(
-                                    "Date of Birth",
-                                    _formatDate(_profileData?['date_of_birth']),
-                                    null,
-                                  ),
-                                if (_profileData?['gender'] != null) ...[
-                                  const SizedBox(height: 8),
-                                  _buildInfoRow(
-                                    "Gender",
-                                    _profileData?['gender'] == 'M'
-                                        ? 'Male'
-                                        : _profileData?['gender'] == 'F'
-                                            ? 'Female'
-                                            : 'Other',
-                                    null,
-                                  ),
-                                ],
-                                if (_profileData?['current_state'] != null) ...[
-                                  const SizedBox(height: 8),
-                                  _buildInfoRow(
-                                    "State",
-                                    _profileData?['current_state'],
-                                    null,
-                                  ),
-                                ],
-                                if (_profileData?['current_district'] != null) ...[
-                                  const SizedBox(height: 8),
-                                  _buildInfoRow(
-                                    "District",
-                                    _profileData?['current_district'],
-                                    null,
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
+                                title: Text(assignment.shiftCenter.exam.name),
+                                subtitle: Text(
+                                  "${shift.startTime.substring(0, 5)} @ ${center.clientCenterName}",
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                                onTap: () {
+                                  // Navigate to MyDuties tab via MainScreen if possible, 
+                                  // or push Screen. For simplicity here we push screen.
+                                  // Since we have tabs now, ideally we switch tabs, but pushing is fine for deep linking behavior.
+                                   Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (context) => MyDutiesScreen(session: widget.session),
+                                    ),
+                                  );
+                                },
+                              ),
+                            );
+                          }).toList(),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-    );
-  }
+      );
+    }
 
-  Widget _buildInfoRow(String label, String value, Color? valueColor) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 100,
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[600],
-              fontWeight: FontWeight.w500,
+    Widget _buildInfoRow(String label, String value, Color? valueColor) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[600],
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: TextStyle(
-              fontSize: 14,
-              color: valueColor ?? Colors.black87,
-              fontWeight: valueColor != null ? FontWeight.bold : FontWeight.normal,
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: 14,
+                color: valueColor ?? Colors.black87,
+                fontWeight: valueColor != null ? FontWeight.bold : FontWeight.normal,
+              ),
             ),
           ),
-        ),
-      ],
-    );
+        ],
+      );
+    }
   }
-}
 

@@ -33,6 +33,11 @@ INSTALLED_APPS = [
     "operators.apps.OperatorsConfig",
     "kyc", 
     "masters",
+    "operations",
+    "assignments",
+    "attendance",
+    "support",
+    "reports",
 ]
 
 MIDDLEWARE = [

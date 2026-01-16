@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../app/session_controller.dart';
 import 'home_screen.dart';
 import 'profile_screen.dart';
+import 'duties/my_duties_screen.dart';
+
 
 class MainScreen extends StatefulWidget {
   final SessionController session;
@@ -52,7 +54,9 @@ class _MainScreenState extends State<MainScreen> {
         onPageChanged: _onPageChanged,
         children: [
           HomeScreen(session: widget.session),
+          MyDutiesScreen(session: widget.session),
           ProfileScreen(session: widget.session),
+
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -64,6 +68,11 @@ class _MainScreenState extends State<MainScreen> {
             icon: Icon(Icons.home),
             label: 'Home',
           ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.assignment),
+            label: 'Duties',
+          ),
+
           BottomNavigationBarItem(
             icon: Icon(Icons.person),
             label: 'Profile',
