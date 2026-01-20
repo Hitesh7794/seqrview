@@ -566,11 +566,11 @@ class DLKycStartView(APIView):
                 dl_dob = None
 
         # Debug: Print fetched DL details
-        print(f"[DL DEBUG] Fetched DL Details:")
-        print(f"  Name: '{dl_name}'")
-        print(f"  DOB: '{dl_dob_str}' -> {dl_dob}")
-        print(f"  Gender: '{dl_gender}'")
-        print(f"  License Number: {data.get('license_number')}")
+        # print(f"[DL DEBUG] Fetched DL Details:")
+        # print(f"  Name: '{dl_name}'")
+        # print(f"  DOB: '{dl_dob_str}' -> {dl_dob}")
+        # print(f"  Gender: '{dl_gender}'")
+        # print(f"  License Number: {data.get('license_number')}")
 
         img_b64 = data.get("profile_image") if data.get("has_image") else None
 
@@ -644,14 +644,14 @@ class DLKycVerifyDetailsView(APIView):
         user_dob = ekyc_dob
 
         # Debug: Print comparison details
-        print(f"[DL VERIFY DEBUG] User Input:")
-        print(f"  Name: '{user_full_name}'")
-        print(f"  DOB: {user_dob} (from session)")
-        print(f"  Gender: '{user_gender}' (will be saved without verification)")
-        print(f"[DL VERIFY DEBUG] Stored DL Details:")
-        print(f"  Name: '{ekyc_name}'")
-        print(f"  DOB: {ekyc_dob}")
-        print(f"  Gender: '{ekyc_gender}' (not verified - DL gender may be inaccurate)")
+        # print(f"[DL VERIFY DEBUG] User Input:")
+        # print(f"  Name: '{user_full_name}'")
+        # print(f"  DOB: {user_dob} (from session)")
+        # print(f"  Gender: '{user_gender}' (will be saved without verification)")
+        # print(f"[DL VERIFY DEBUG] Stored DL Details:")
+        # print(f"  Name: '{ekyc_name}'")
+        # print(f"  DOB: {ekyc_dob}")
+        # print(f"  Gender: '{ekyc_gender}' (not verified - DL gender may be inaccurate)")
 
         
         user_name_normalized = " ".join(user_full_name.split()) if user_full_name else ""
@@ -662,13 +662,13 @@ class DLKycVerifyDetailsView(APIView):
         dob_ok = True  # DOB already verified at DL input, so always match
         gender_ok = True  # Gender not verified - always accept user input
 
-        print(f"[DL VERIFY DEBUG] Comparison Results:")
-        print(f"  Name Match: Exact match required, OK: {name_ok}")
-        print(f"  User Name (normalized): '{user_name_normalized.upper()}'")
-        print(f"  DL Name (normalized): '{ekyc_name_normalized.upper()}'")
-        print(f"  DOB Match: {dob_ok}")
-        print(f"  Gender Match: {gender_ok} (skipped - using user input)")
-        print(f"  Overall Match: {name_ok and dob_ok}")
+        # print(f"[DL VERIFY DEBUG] Comparison Results:")
+        # print(f"  Name Match: Exact match required, OK: {name_ok}")
+        # print(f"  User Name (normalized): '{user_name_normalized.upper()}'")
+        # print(f"  DL Name (normalized): '{ekyc_name_normalized.upper()}'")
+        # print(f"  DOB Match: {dob_ok}")
+        # print(f"  Gender Match: {gender_ok} (skipped - using user input)")
+        # print(f"  Overall Match: {name_ok and dob_ok}")
 
         # Store match results
         session.name_match_score = score

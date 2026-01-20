@@ -1,13 +1,14 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework.permissions import IsAuthenticated
+from common.permissions import IsInternalAdmin
 from django.utils import timezone
 from django.db.models import Count, Q
 from assignments.models import OperatorAssignment
 from support.models import Incident
 
 class DailySummaryView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminUser]
+    permission_classes = [IsInternalAdmin]
 
     def get(self, request):
         today = timezone.now().date()
@@ -54,3 +55,38 @@ class DailySummaryView(APIView):
                 'uid', 'category__name', 'priority', 'status', 'created_at', 'assignment__operator__username'
             ))
         })
+
+import csv
+from django.http import HttpResponse
+from attendance.models import AttendanceLog
+
+class AttendanceExportView(APIView):
+    permission_classes = [IsInternalAdmin]
+
+    def get(self, request):
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="attendance_logs.csv"'
+
+        writer = csv.writer(response)
+        writer.writerow(['Date', 'Time', 'Operator', 'Role', 'Center', 'Activity', 'Status', 'Latitude', 'Longitude'])
+
+        logs = AttendanceLog.objects.select_related(
+            'assignment__operator', 
+            'assignment__shift_center__center',
+            'assignment__role'
+        ).order_by('-timestamp')
+
+        for log in logs:
+            writer.writerow([
+                log.timestamp.date(),
+                log.timestamp.strftime('%H:%M:%S'),
+                log.assignment.operator.username,
+                log.assignment.role.name,
+                log.assignment.shift_center.center.clientCenterName,
+                log.activity_type,
+                'Verified' if log.is_verified else 'Flagged',
+                log.latitude,
+                log.longitude
+            ])
+
+        return response

@@ -1,1 +1,28 @@
 venv/
+seqrview_web/node_modules/
+
+
+# Logs
+seqrview_web/logs
+*.log
+seqrview_web/npm-debug.log*
+seqrview_web/yarn-debug.log*
+seqrview_web/yarn-error.log*
+seqrview_web/pnpm-debug.log*
+seqrview_web/lerna-debug.log*
+
+seqrview_web/node_modules
+seqrview_web/dist
+seqrview_web/dist-ssr
+*.local
+
+# Editor directories and files
+seqrview_web/.vscode/*
+!.vscode/extensions.json
+seqrview_web/.idea
+seqrview_web/.DS_Store
+seqrview_web/*.suo
+seqrview_web/*.ntvs*
+seqrview_web/*.njsproj
+seqrview_web/*.sln
+seqrview_web/*.sw?

@@ -41,6 +41,7 @@ class SessionController extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    await api.logout(); // Call server to invalidate refresh token
     await storage.clearAll();
     otpSessionUid = null;
     mobile = null;

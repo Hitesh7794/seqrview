@@ -11,6 +11,12 @@ class OperatorAssignmentViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = 'uid'
 
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_staff or getattr(user, 'user_type', '') == 'INTERNAL_ADMIN':
+            return OperatorAssignment.objects.all()
+        return OperatorAssignment.objects.filter(operator=user)
+
     @action(detail=False, methods=['get'], url_path='my-duties')
     def my_duties(self, request):
         

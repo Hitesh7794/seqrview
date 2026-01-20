@@ -178,4 +178,14 @@ class ApiClient {
       throw Exception("Report failed: $e");
     }
   }
+  Future<void> logout() async {
+    try {
+      final refresh = await storage.getRefresh();
+      if (refresh != null) {
+        await dio.post('/api/auth/logout/', data: {'refresh': refresh});
+      }
+    } catch (_) {
+      // Ignore network errors on logout, we clear local storage anyway
+    }
+  }
 }
