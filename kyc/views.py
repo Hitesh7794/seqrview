@@ -221,6 +221,83 @@ class AadhaarKycStartView(APIView):
         }, status=status.HTTP_200_OK)
 
 
+class AadhaarKycResendOtpView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if request.user.user_type != "OPERATOR":
+            return Response({"detail": "Only operator can resend KYC OTP"}, status=status.HTTP_403_FORBIDDEN)
+
+        # Expect id_number to be passed to regenerate OTP
+        ser = AadhaarStartSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        id_number = ser.validated_data["id_number"]
+
+        cooldown_seconds = getattr(settings, "AADHAAR_OTP_COOLDOWN_SECONDS", 60)
+        now = timezone.now()
+
+        active = _active_aadhaar_session(request.user)
+        if not active:
+            return Response({"detail": "No active session found. Please start new verification."}, status=status.HTTP_404_NOT_FOUND)
+
+        if active.is_expired():
+            active.status = "EXPIRED"
+            active.save(update_fields=["status", "updated_at"])
+            return Response({"detail": "Session expired. Please start again."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Check cooldown (using updated_at which tracks last interaction)
+        seconds_since = int((now - active.updated_at).total_seconds())
+        if seconds_since < cooldown_seconds:
+            retry_after = max(0, cooldown_seconds - seconds_since)
+            return Response(
+                {
+                    "detail": f"Please wait {retry_after}s before resending",
+                    "retry_after_seconds": retry_after,
+                },
+                status=status.HTTP_429_TOO_MANY_REQUESTS
+            )
+
+        # Verify ID matches the one used for dedupe (sanity check)
+        dedupe_hash = KycSession.compute_dedupe_hash(id_number)
+        if active.dedupe_hash != dedupe_hash:
+             return Response({"detail": "Aadhaar number does not match active session"}, status=status.HTTP_400_BAD_REQUEST)
+
+        client = SurepassClient()
+        try:
+            resp = client.aadhaar_generate_otp(id_number=id_number)
+        except SurepassError as e:
+            vendor_status = getattr(e, "status_code", None) or getattr(e, "http_status", None)
+            msg = str(e)
+            if vendor_status == 429 or "Rate Limited" in msg:
+                return Response(
+                    {
+                        "detail": "Rate limited by Aadhaar provider. Please wait.",
+                        "code": "RATE_LIMITED",
+                        "retry_after_seconds": cooldown_seconds,
+                    },
+                    status=status.HTTP_429_TOO_MANY_REQUESTS,
+                )
+            return Response({"detail": msg}, status=status.HTTP_502_BAD_GATEWAY)
+
+        data = resp.get("data", {}) or {}
+        surepass_client_id = data.get("client_id")
+
+        if surepass_client_id:
+            active.surepass_client_id = surepass_client_id
+        
+        active.status = "OTP_SENT"
+        active.otp_attempts = 0 # Reset attempts
+        active.updated_at = now
+        active.save(update_fields=["surepass_client_id", "status", "otp_attempts", "updated_at"])
+
+        return Response({
+            "kyc_session_uid": str(active.uid),
+            "otp_sent": True,
+            "retry_after_seconds": cooldown_seconds,
+            "status": "OTP_SENT"
+        }, status=status.HTTP_200_OK)
+
+
 class AadhaarKycSubmitOtpView(APIView):
     permission_classes = [IsAuthenticated]
 

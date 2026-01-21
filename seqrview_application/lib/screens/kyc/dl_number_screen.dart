@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../app/session_controller.dart';
 import '../../app/onboarding_stage.dart';
 
@@ -14,9 +15,26 @@ class DLNumberScreen extends StatefulWidget {
 class _DLNumberScreenState extends State<DLNumberScreen> {
   final _licenseNumber = TextEditingController();
   DateTime? _dob;
+  final _dobController = TextEditingController(); // For visual display
 
   bool _loading = false;
   String? _error;
+
+  // Theme State
+  bool _isDark = true;
+
+  @override
+  void initState() {
+    super.initState();
+     // Set full screen mode
+    SystemChrome.setSystemUIOverlayStyle(
+      SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: _isDark ? Brightness.light : Brightness.dark,
+      ),
+    );
+     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  }
 
   String _prettyError(Object e) {
     if (e is DioException) {
@@ -32,7 +50,14 @@ class _DLNumberScreenState extends State<DLNumberScreen> {
     final y = d.year.toString().padLeft(4, '0');
     final m = d.month.toString().padLeft(2, '0');
     final day = d.day.toString().padLeft(2, '0');
-    return "$y-$m-$day";
+    return "$day / $m / $y"; // Display format dd/mm/yyyy
+  }
+  
+  String _apiDate(DateTime d) {
+    final y = d.year.toString().padLeft(4, '0');
+    final m = d.month.toString().padLeft(2, '0');
+    final day = d.day.toString().padLeft(2, '0');
+    return "$y-$m-$day"; // API format yyyy-mm-dd
   }
 
   Future<void> _pickDob() async {
@@ -42,9 +67,33 @@ class _DLNumberScreenState extends State<DLNumberScreen> {
       context: context,
       initialDate: initial,
       firstDate: DateTime(1950, 1, 1),
-      lastDate: DateTime(now.year - 10, 12, 31),
+      lastDate: DateTime(now.year - 15, 12, 31),
+      builder: (context, child) {
+        return Theme(
+          data: _isDark ? ThemeData.dark().copyWith(
+            colorScheme: const ColorScheme.dark(
+               primary: Color(0xFF9C27B0), // Purple primary
+               onPrimary: Colors.white,
+               surface: Color(0xFF1E2030),
+               onSurface: Colors.white,
+            ),
+             dialogBackgroundColor: const Color(0xFF161A22),
+          ) : ThemeData.light().copyWith(
+             colorScheme: const ColorScheme.light(
+               primary: Color(0xFF9C27B0), // Purple primary
+               onPrimary: Colors.white,
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
-    if (picked != null) setState(() => _dob = picked);
+    if (picked != null) {
+      setState(() {
+         _dob = picked;
+         _dobController.text = _fmtDate(picked);
+      });
+    }
   }
 
   Future<void> _start() async {
@@ -69,12 +118,11 @@ class _DLNumberScreenState extends State<DLNumberScreen> {
         '/api/kyc/dl/start/',
         data: {
           "license_number": licenseNumber,
-          "dob": _fmtDate(_dob!),
+          "dob": _apiDate(_dob!),
         },
       );
 
       final data = res.data;
-
       final kycUid = (data is Map) ? data['kyc_session_uid']?.toString() : null;
       if (kycUid == null || kycUid.isEmpty) {
         throw Exception("Invalid server response: kyc_session_uid missing");
@@ -85,7 +133,6 @@ class _DLNumberScreenState extends State<DLNumberScreen> {
 
       final next = data is Map ? data['next']?.toString() : null;
 
-      // Navigate to verify details screen
       if (next == "VERIFY_DETAILS") {
         widget.session.setStage(OnboardingStage.verifyDetails);
       } else {
@@ -105,70 +152,281 @@ class _DLNumberScreenState extends State<DLNumberScreen> {
   @override
   void dispose() {
     _licenseNumber.dispose();
+    _dobController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final dobText = _dob == null ? "Select Date of Birth" : _fmtDate(_dob!);
-    final disabled = _loading;
+    // Theme Colors (Adjusted to avoid Pink)
+    final bg = _isDark ? const Color(0xFF0C0E11) : const Color(0xFFF5F7FA);
+    final textMain = _isDark ? Colors.white : const Color(0xFF1F2937);
+    final textSub = _isDark ? const Color(0xFF8B949E) : const Color(0xFF6B7280);
+    final cardColor = _isDark ? const Color(0xFF161A22) : Colors.white;
+    final borderColor = _isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.1);
+    
+    // Changed to a deeper Violet/Purple to avoid "Pink" look
+    final accentColor = const Color(0xFF7C3AED); // Violet 600
+    final accentBg = const Color(0xFFEDE9FE); 
+    
+    final infoBg = _isDark ? const Color(0xFF1E2030) : const Color(0xFFEBEBFF); // Info Box
+    final infoText = _isDark ? const Color(0xFFB0B0E0) : const Color(0xFF4A4A8A);
+
+    // Update status bar on build in case theme changed
+    SystemChrome.setSystemUIOverlayStyle(
+      SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: _isDark ? Brightness.light : Brightness.dark,
+      ),
+    );
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Driving License Verification")),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
+      backgroundColor: bg,
+      body: SafeArea(
         child: Column(
           children: [
-            const Text(
-              "Enter your driving license number and date of birth to verify your identity.",
-              style: TextStyle(fontSize: 16),
-            ),
-            const SizedBox(height: 16),
-
-            TextField(
-              controller: _licenseNumber,
-              textCapitalization: TextCapitalization.characters,
-              decoration: const InputDecoration(
-                labelText: "License Number",
-                hintText: "e.g. TS02620190003657",
-                border: OutlineInputBorder(),
+            // -- Header --
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                   // Back Button (Logic Fixed)
+                   IconButton(
+                     onPressed: () {
+                        // Use session stage management instead of Navigator.pop
+                        widget.session.setStage(OnboardingStage.chooseKycMethod);
+                     },
+                     icon: Icon(Icons.arrow_back_ios_new, size: 20, color: textMain),
+                   ),
+                   
+                   // Center Title/Progress
+                   Expanded(
+                     child: Center(
+                       child: const SizedBox(),
+                     ),
+                   ),
+                   
+                   // Theme & Logout
+                   Row(
+                     mainAxisSize: MainAxisSize.min,
+                     children: [
+                        IconButton(
+                          onPressed: () => setState(() => _isDark = !_isDark),
+                          icon: Icon(
+                            _isDark ? Icons.wb_sunny_outlined : Icons.nightlight_round,
+                            color: textMain,
+                          ),
+                          tooltip: "Toggle Theme",
+                        ),
+                        IconButton(
+                          onPressed: () => widget.session.logout(),
+                          icon: Icon(Icons.logout_rounded, color: textMain),
+                          tooltip: "Logout",
+                        ),
+                     ],
+                   ),
+                ],
               ),
             ),
+            
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 24),
+                    // Shield Icon
+                    Container(
+                      width: 80,
+                      height: 80,
+                      decoration: BoxDecoration(
+                         color: _isDark ? accentColor.withOpacity(0.1) : accentBg,
+                         shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.security, color: accentColor, size: 36),
+                    ),
+                    const SizedBox(height: 24),
+                    
+                    // Title
+                    Text(
+                      "Verify Identity",
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: textMain,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      "Securely link your driving license to access the elite operator portal.",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: textSub,
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 40),
 
-            const SizedBox(height: 12),
+                    // -- Input 1: License Number --
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        "DRIVING LICENSE NUMBER",
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: accentColor,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: cardColor,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: borderColor),
+                      ),
+                      child: TextField(
+                        controller: _licenseNumber,
+                        textCapitalization: TextCapitalization.characters,
+                        style: TextStyle(color: textMain, fontWeight: FontWeight.w500),
+                        decoration: InputDecoration(
+                          hintText: "MH-1220230004567",
+                          hintStyle: TextStyle(color: textSub.withOpacity(0.5)),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                          suffixIcon: Icon(Icons.badge_outlined, color: textSub.withOpacity(0.5)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
 
-            OutlinedButton(
-              onPressed: disabled ? null : _pickDob,
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 56),
-              ),
-              child: Text(dobText),
-            ),
+                    // -- Input 2: Date of Birth --
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        "DATE OF BIRTH",
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: accentColor,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    GestureDetector(
+                      onTap: () {
+                         if (!_loading) _pickDob();
+                      },
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: cardColor,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: borderColor),
+                        ),
+                        child: AbsorbPointer(
+                          child: TextField(
+                            controller: _dobController,
+                             style: TextStyle(color: textMain, fontWeight: FontWeight.w500),
+                             decoration: InputDecoration(
+                              hintText: "DD / MM / YYYY",
+                              hintStyle: TextStyle(color: textSub.withOpacity(0.5)),
+                              border: InputBorder.none,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                              suffixIcon: Icon(Icons.calendar_month_outlined, color: textSub.withOpacity(0.5)),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
 
-            const SizedBox(height: 12),
+                    const SizedBox(height: 24),
 
-            if (_error != null)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  color: Colors.red.withOpacity(0.08),
+                    // -- Info Box --
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: infoBg,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: infoText.withOpacity(0.1)),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.info, color: infoText, size: 20),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              "Ensure the details match your government-issued ID exactly to avoid delays in verification.",
+                              style: TextStyle(color: infoText, fontSize: 13, height: 1.4),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    if (_error != null) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                         _error!,
+                         style: const TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.w500),
+                         textAlign: TextAlign.center,
+                      ),
+                    ]
+                  ],
                 ),
-                child: Text(_error!, style: const TextStyle(color: Colors.red)),
               ),
-
-            const Spacer(),
-
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton(
-                onPressed: disabled ? null : _start,
-                child: _loading
-                    ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Text("Verify License"),
-              ),
+            ),
+             
+            // Bottom Area
+            Padding(
+               padding: const EdgeInsets.all(24),
+               child: Column(
+                 children: [
+                    // TextButton(
+                    //   onPressed: () {},
+                    //   child: Text(
+                    //     "Why do we need this?",
+                    //     style: TextStyle(
+                    //        decoration: TextDecoration.underline,
+                    //        color: accentColor,
+                    //        fontSize: 14,
+                    //        fontWeight: FontWeight.w600
+                    //     )
+                    //   ),
+                    // ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: ElevatedButton(
+                        onPressed: _loading ? null : _start,
+                        style: ElevatedButton.styleFrom(
+                           backgroundColor: accentColor,
+                           foregroundColor: Colors.white,
+                           disabledBackgroundColor: accentColor.withOpacity(0.5),
+                           elevation: 0,
+                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: _loading 
+                          ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          : const Text("Confirm & Verify", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                     Text(
+                        "By proceeding, you agree to our verification terms and data privacy policy.",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                           color: textSub.withOpacity(0.5),
+                           fontSize: 10,
+                        ),
+                     ),
+                 ],
+               ),
             ),
           ],
         ),

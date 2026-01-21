@@ -27,6 +27,461 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
   bool _methodChecked = false; // Prevent multiple checks
   String? _error;
 
+  // Added for new design
+  bool _isDark = false; // Example theme state
+  
+  // Helper for date formatting
+  String _fmtDate(DateTime d) {
+    final y = d.year.toString().padLeft(4, '0');
+    final m = d.month.toString().padLeft(2, '0');
+    final day = d.day.toString().padLeft(2, '0');
+    return "$y-$m-$day";
+  }
+
+  String _prettyError(Object e) {
+    if (e is DioException) {
+      final data = e.response?.data;
+      if (data is Map && data['detail'] != null) return data['detail'].toString();
+      if (data is Map && data['message'] != null) return data['message'].toString();
+      return "Network/API error (${e.response?.statusCode ?? 'no status'})";
+    }
+    return e.toString();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _checkMethod();
+  }
+
+  Future<void> _checkMethod() async {
+    if (_methodChecked) return;
+    try {
+      _methodChecked = true;
+      final res = await widget.session.api.dio.get('/api/operators/profile/');
+      final data = res.data as Map<String, dynamic>?;
+      final method = data?['verification_method']?.toString();
+      if (mounted) setState(() => _isDL = method == 'DL');
+    } catch (_) {
+      if (mounted) setState(() => _isDL = false);
+    }
+  }
+
+  Future<void> _pickDob() async {
+    final now = DateTime.now();
+    final initial = _dob ?? DateTime(now.year - 20, 1, 1);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(1950, 1, 1),
+      lastDate: DateTime(now.year - 10, 12, 31),
+    );
+    if (picked != null) setState(() => _dob = picked);
+  }
+
+  Future<void> _verify() async {
+    final name = _fullName.text.trim();
+    if (name.isEmpty) {
+      setState(() => _error = "Please enter your full name");
+      return;
+    }
+    
+    if (!_isDL && _dob == null) {
+      setState(() => _error = "Please select Date of Birth");
+      return;
+    }
+
+    if (_selectedState == null || _selectedState!.isEmpty) {
+      setState(() => _error = "Please select State");
+      return;
+    }
+
+    if (_selectedDistrict == null || _selectedDistrict!.isEmpty) {
+      setState(() => _error = "Please select District");
+      return;
+    }
+
+    final address = _address.text.trim();
+    if (address.isEmpty) {
+      setState(() => _error = "Please enter your full address");
+      return;
+    }
+
+    final kycUid = widget.session.kycSessionUid;
+    if (kycUid == null || kycUid.isEmpty) {
+      setState(() => _error = "KYC session missing. Please restart verification.");
+      return;
+    }
+
+    setState(() {
+      _error = null;
+      _loading = true;
+    });
+
+    try {
+      String endpoint = _isDL ? '/api/kyc/dl/verify-details/' : '/api/kyc/aadhaar/verify-details/';
+      
+      final requestData = <String, dynamic>{
+        "kyc_session_uid": kycUid,
+        "full_name": name,
+        "gender": _gender,
+        "state": _selectedState,
+        "district": _selectedDistrict,
+        "address": address,
+      };
+      
+      if (!_isDL && _dob != null) {
+        requestData["date_of_birth"] = _fmtDate(_dob!);
+      }
+
+      final res = await widget.session.api.dio.post(endpoint, data: requestData);
+      final data = res.data;
+      final match = data is Map ? data['match'] : false;
+
+      if (match == true) {
+        await widget.session.bootstrap();
+      } else {
+        final mismatches = data is Map ? data['mismatches'] : null;
+        final message = data is Map ? data['message']?.toString() : null;
+        
+        String errorMsg = message ?? "Details do not match. Please verify and try again.";
+        if (mismatches is Map) {
+          final issues = <String>[];
+          if (mismatches['name'] == true) issues.add("Name");
+          if (mismatches['date_of_birth'] == true) issues.add("Date of Birth");
+          if (mismatches['gender'] == true) issues.add("Gender");
+          if (issues.isNotEmpty) {
+            errorMsg = "${message}\nMismatch in: ${issues.join(", ")}";
+          }
+        }
+        setState(() => _error = errorMsg);
+      }
+    } catch (e) {
+      setState(() => _error = _prettyError(e));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _fullName.dispose();
+    _address.dispose();
+    super.dispose();
+  }
+
+  List<String> get _districts {
+    if (_selectedState == null) {
+      return [];
+    }
+    return _districtsByState[_selectedState] ?? [];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Theme Colors
+    final bg = _isDark ? const Color(0xFF0C0E11) : const Color(0xFFF5F7FA);
+    final textMain = _isDark ? Colors.white : const Color(0xFF1F2937);
+    final textSub = _isDark ? const Color(0xFF8B949E) : const Color(0xFF6B7280);
+    final cardColor = _isDark ? const Color(0xFF161A22) : Colors.white;
+    final borderColor = _isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.1);
+    final accentColor = const Color(0xFF6366F1); // Indigo
+
+    final dobText = _dob == null ? "mm/dd/yyyy" : _fmtDate(_dob!);
+
+    InputDecoration inputDeco(String label, {String? hint, Widget? suffix}) {
+      return InputDecoration(
+        labelText: label,
+        hintText: hint,
+        hintStyle: TextStyle(color: textSub.withOpacity(0.5)),
+        labelStyle: TextStyle(color: textSub),
+        floatingLabelStyle: TextStyle(color: accentColor),
+        filled: true,
+        fillColor: cardColor,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: borderColor),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: accentColor, width: 2),
+        ),
+        suffixIcon: suffix,
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: bg,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // -- Header --
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                   // No Back Button as requested
+                   const SizedBox(width: 8), 
+                   
+                   // Theme & Logout
+                   const Spacer(),
+                   Row(
+                     mainAxisSize: MainAxisSize.min,
+                     children: [
+                        IconButton(
+                          onPressed: () => setState(() => _isDark = !_isDark),
+                          icon: Icon(
+                            _isDark ? Icons.wb_sunny_outlined : Icons.nightlight_round,
+                            color: textMain,
+                          ),
+                          tooltip: "Toggle Theme",
+                        ),
+                        IconButton(
+                          onPressed: () => widget.session.logout(),
+                          icon: Icon(Icons.logout_rounded, color: textMain),
+                          tooltip: "Logout",
+                        ),
+                     ],
+                   ),
+                ],
+              ),
+            ),
+
+            // -- Scrollable Content --
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Progress Indicator
+                    Center(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(width: 40, height: 4, decoration: BoxDecoration(color: accentColor, borderRadius: BorderRadius.circular(2))),
+                          const SizedBox(width: 8),
+                          Container(width: 40, height: 4, decoration: BoxDecoration(color: accentColor, borderRadius: BorderRadius.circular(2))),
+                          const SizedBox(width: 8),
+                          Container(width: 40, height: 4, decoration: BoxDecoration(color: borderColor, borderRadius: BorderRadius.circular(2))),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+
+                    Text(
+                      "Verify Details",
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: textMain,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      "Please enter your details as they appear on your ID document:",
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: textSub,
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+
+                    // FULL NAME
+                    Text("FULL NAME", style: TextStyle(color: textSub, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _fullName,
+                      style: TextStyle(color: textMain),
+                      decoration: inputDeco("Full Name", hint: "John Doe"),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // DOB & Gender Row
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // DATE OF BIRTH
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text("DATE OF BIRTH", style: TextStyle(color: textSub, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                              const SizedBox(height: 8),
+                              InkWell(
+                                onTap: (!_isDL && !_loading) ? _pickDob : null, // Disable picker if DL (DOB fixed)
+                                borderRadius: BorderRadius.circular(12),
+                                child: IgnorePointer(
+                                  ignoring: true, // Let InkWell handle tap
+                                  child: TextField(
+                                    controller: TextEditingController(text: dobText),
+                                    style: TextStyle(color: _isDL ? textSub : textMain), // Dim if disabled
+                                    decoration: inputDeco("", suffix: Icon(Icons.calendar_today_outlined, size: 20, color: textSub)),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        // GENDER
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text("GENDER", style: TextStyle(color: textSub, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                              const SizedBox(height: 8),
+                              DropdownButtonFormField<String>(
+                                value: _gender,
+                                dropdownColor: cardColor,
+                                decoration: inputDeco(""),
+                                style: TextStyle(color: textMain, fontSize: 16),
+                                icon: Icon(Icons.keyboard_arrow_down, color: textSub),
+                                items: const [
+                                  DropdownMenuItem(value: "M", child: Text("Male")),
+                                  DropdownMenuItem(value: "F", child: Text("Female")),
+                                  DropdownMenuItem(value: "O", child: Text("Other")),
+                                ],
+                                onChanged: _loading ? null : (v) => setState(() => _gender = v ?? "M"),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+
+                    // STATE & DISTRICT Row
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // STATE
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text("STATE *", style: TextStyle(color: textSub, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                              const SizedBox(height: 8),
+                              DropdownButtonFormField<String>(
+                                value: _selectedState,
+                                dropdownColor: cardColor,
+                                isExpanded: true,
+                                decoration: inputDeco("Select State"),
+                                style: TextStyle(color: textMain, fontSize: 16),
+                                icon: Icon(Icons.keyboard_arrow_down, color: textSub),
+                                items: _states.map((state) => DropdownMenuItem(
+                                  value: state,
+                                  child: Text(state, overflow: TextOverflow.ellipsis),
+                                )).toList(),
+                                onChanged: _loading ? null : (v) {
+                                  setState(() {
+                                    _selectedState = v;
+                                    _selectedDistrict = null;
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        // DISTRICT
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text("DISTRICT *", style: TextStyle(color: textSub, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                              const SizedBox(height: 8),
+                              DropdownButtonFormField<String>(
+                                value: _selectedDistrict,
+                                dropdownColor: cardColor,
+                                isExpanded: true,
+                                decoration: inputDeco("Select District"),
+                                style: TextStyle(color: textMain, fontSize: 16),
+                                icon: Icon(Icons.keyboard_arrow_down, color: textSub),
+                                items: _districts.map((district) => DropdownMenuItem(
+                                  value: district,
+                                  child: Text(district, overflow: TextOverflow.ellipsis),
+                                )).toList(),
+                                onChanged: _loading || _selectedState == null ? null : (v) => setState(() => _selectedDistrict = v),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+
+                    // FULL ADDRESS
+                    Text("FULL ADDRESS *", style: TextStyle(color: textSub, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _address,
+                      maxLines: 4,
+                      style: TextStyle(color: textMain),
+                      decoration: inputDeco("Address", hint: "Street name, building number, apartment..."),
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    if (_error != null)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        margin: const EdgeInsets.only(bottom: 24),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          color: Colors.red.withOpacity(0.1),
+                          border: Border.all(color: Colors.red.withOpacity(0.3)),
+                        ),
+                        child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13)),
+                      ),
+
+                    const SizedBox(height: 80), // Bottom padding for button
+                  ],
+                ),
+              ),
+            ),
+
+            // -- Fixed Bottom Button --
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: bg,
+                border: Border(top: BorderSide(color: borderColor)),
+              ),
+              child: SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: _loading ? null : _verify,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: accentColor,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: accentColor.withOpacity(0.5),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  child: _loading 
+                    ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: const [
+                          Text("Verify & Continue", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          SizedBox(width: 8),
+                          Icon(Icons.arrow_forward_rounded, size: 20)
+                        ],
+                      ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // Indian states list
   final List<String> _states = [
     'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
@@ -291,311 +746,4 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
     ],
   };
 
-  List<String> get _districts {
-    if (_selectedState == null) return [];
-    return _districtsByState[_selectedState!] ?? [];
-  }
-
-  String _prettyError(Object e) {
-    if (e is DioException) {
-      final data = e.response?.data;
-      if (data is Map && data['detail'] != null) return data['detail'].toString();
-      if (data is Map && data['message'] != null) return data['message'].toString();
-      return "Network/API error (${e.response?.statusCode ?? 'no status'})";
-    }
-    return e.toString();
-  }
-
-  String _fmtDate(DateTime d) {
-    final y = d.year.toString().padLeft(4, '0');
-    final m = d.month.toString().padLeft(2, '0');
-    final day = d.day.toString().padLeft(2, '0');
-    return "$y-$m-$day";
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    // User will manually fill in details - no auto-fill
-    _checkMethod();
-  }
-
-  Future<void> _checkMethod() async {
-    // Prevent multiple simultaneous checks
-    if (_methodChecked) return;
-    
-    try {
-      _methodChecked = true;
-      final profileRes = await widget.session.api.dio.get('/api/operators/profile/');
-      final profileData = profileRes.data as Map<String, dynamic>?;
-      final method = profileData?['verification_method']?.toString();
-      if (mounted) {
-        setState(() {
-          _isDL = method == 'DL';
-        });
-      }
-    } catch (e) {
-      // If profile fetch fails (401, network error, etc.), default to Aadhaar (show DOB)
-      // Don't retry - just use default
-      if (mounted) {
-        setState(() {
-          _isDL = false; // Default to Aadhaar
-        });
-      }
-    }
-  }
-
-  Future<void> _pickDob() async {
-    final now = DateTime.now();
-    final initial = _dob ?? DateTime(now.year - 20, 1, 1);
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: initial,
-      firstDate: DateTime(1950, 1, 1),
-      lastDate: DateTime(now.year - 10, 12, 31),
-    );
-    if (picked != null) setState(() => _dob = picked);
-  }
-
-  Future<void> _verify() async {
-    final name = _fullName.text.trim();
-    if (name.isEmpty) {
-      setState(() => _error = "Please enter your full name");
-      return;
-    }
-    
-    // DOB only required for Aadhaar, not for DL (already collected at DL input screen)
-    if (!_isDL && _dob == null) {
-      setState(() => _error = "Please select Date of Birth");
-      return;
-    }
-
-    if (_selectedState == null || _selectedState!.isEmpty) {
-      setState(() => _error = "Please select State");
-      return;
-    }
-
-    if (_selectedDistrict == null || _selectedDistrict!.isEmpty) {
-      setState(() => _error = "Please select District");
-      return;
-    }
-
-    final address = _address.text.trim();
-    if (address.isEmpty) {
-      setState(() => _error = "Please enter your full address");
-      return;
-    }
-
-    final kycUid = widget.session.kycSessionUid;
-    if (kycUid == null || kycUid.isEmpty) {
-      setState(() => _error = "KYC session missing. Please restart verification.");
-      return;
-    }
-
-    setState(() {
-      _error = null;
-      _loading = true;
-    });
-
-    try {
-      // Determine endpoint based on verification method
-      String endpoint = _isDL ? '/api/kyc/dl/verify-details/' : '/api/kyc/aadhaar/verify-details/';
-      
-      // Build request data
-      final requestData = <String, dynamic>{
-        "kyc_session_uid": kycUid,
-        "full_name": name,
-        "gender": _gender,
-        "state": _selectedState,
-        "district": _selectedDistrict,
-        "address": address,
-      };
-      
-      // Only include DOB for Aadhaar
-      if (!_isDL && _dob != null) {
-        requestData["date_of_birth"] = _fmtDate(_dob!);
-      }
-
-      final res = await widget.session.api.dio.post(
-        endpoint,
-        data: requestData,
-      );
-
-      final data = res.data;
-      final match = data is Map ? data['match'] : false;
-      final next = data is Map ? data['next']?.toString() : null;
-
-      if (match == true) {
-        // Details verified successfully - proceed to face match (which combines liveness + match)
-        await widget.session.bootstrap();
-      } else {
-        // Mismatch - show error and allow retry
-        final mismatches = data is Map ? data['mismatches'] : null;
-        final message = data is Map ? data['message']?.toString() : null;
-        
-        String errorMsg = message ?? "Details do not match. Please verify and try again.";
-        if (mismatches is Map) {
-          final issues = <String>[];
-          if (mismatches['name'] == true) issues.add("Name");
-          if (mismatches['date_of_birth'] == true) issues.add("Date of Birth");
-          if (mismatches['gender'] == true) issues.add("Gender");
-          if (issues.isNotEmpty) {
-            errorMsg = "${message}\nMismatch in: ${issues.join(", ")}";
-          }
-        }
-        
-        setState(() => _error = errorMsg);
-      }
-    } catch (e) {
-      setState(() => _error = _prettyError(e));
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  @override
-  void dispose() {
-    _fullName.dispose();
-    _address.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final dobText = _dob == null ? "Select DOB" : _fmtDate(_dob!);
-
-    return Scaffold(
-      appBar: AppBar(title: const Text("Verify Details")),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              "Please enter your details as they appear on your ID document:",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-            ),
-            const SizedBox(height: 24),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _fullName,
-              decoration: const InputDecoration(
-                labelText: "Full Name",
-                hintText: "Enter your full name as on your ID",
-                border: OutlineInputBorder(),
-              ),
-            ),
-            // Only show DOB picker for Aadhaar, not for DL (DOB already collected at DL input screen)
-            if (!_isDL) ...[
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: _loading ? null : _pickDob,
-                      child: Text(dobText),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  DropdownButton<String>(
-                    value: _gender,
-                    items: const [
-                      DropdownMenuItem(value: "M", child: Text("Male")),
-                      DropdownMenuItem(value: "F", child: Text("Female")),
-                      DropdownMenuItem(value: "O", child: Text("Other")),
-                    ],
-                    onChanged: _loading ? null : (v) => setState(() => _gender = v ?? "M"),
-                  ),
-                ],
-              ),
-            ] else ...[
-              // For DL, only show gender dropdown
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                value: _gender,
-                decoration: const InputDecoration(
-                  labelText: "Gender",
-                  border: OutlineInputBorder(),
-                ),
-                items: const [
-                  DropdownMenuItem(value: "M", child: Text("Male")),
-                  DropdownMenuItem(value: "F", child: Text("Female")),
-                  DropdownMenuItem(value: "O", child: Text("Other")),
-                ],
-                onChanged: _loading ? null : (v) => setState(() => _gender = v ?? "M"),
-              ),
-            ],
-            // State and District dropdowns (for both Aadhaar and DL)
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              value: _selectedState,
-              decoration: const InputDecoration(
-                labelText: "State *",
-                border: OutlineInputBorder(),
-              ),
-              items: _states.map((state) => DropdownMenuItem(
-                value: state,
-                child: Text(state),
-              )).toList(),
-              onChanged: _loading ? null : (v) {
-                setState(() {
-                  _selectedState = v;
-                  _selectedDistrict = null; // Reset district when state changes
-                });
-              },
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              value: _selectedDistrict,
-              decoration: const InputDecoration(
-                labelText: "District *",
-                border: OutlineInputBorder(),
-                hintText: "Select state first",
-              ),
-              items: _districts.map((district) => DropdownMenuItem(
-                value: district,
-                child: Text(district),
-              )).toList(),
-              onChanged: _loading || _selectedState == null ? null : (v) {
-                setState(() => _selectedDistrict = v);
-              },
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _address,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: "Full Address *",
-                hintText: "Enter your complete address",
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            if (_error != null)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  color: Colors.red.withOpacity(0.08),
-                ),
-                child: Text(_error!, style: const TextStyle(color: Colors.red)),
-              ),
-            const Spacer(),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton(
-                onPressed: _loading ? null : _verify,
-                child: _loading
-                    ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Text("Verify & Continue"),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
-

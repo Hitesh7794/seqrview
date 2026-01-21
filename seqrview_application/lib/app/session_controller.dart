@@ -124,7 +124,9 @@ class SessionController extends ChangeNotifier {
 
     if (profileStatus == 'KYC_IN_PROGRESS') {
       if (method == 'AADHAAR') {
-        if (kycStatus == 'OTP_SENT') return OnboardingStage.aadhaarOtp;
+        // If OTP_SENT, go to Number screen (which handles overlay or re-entry)
+        // This avoids showing the broken standalone AadhaarOtpScreen on restart
+        if (kycStatus == 'OTP_SENT') return OnboardingStage.aadhaarNumber;
         // OTP_VERIFIED means details need to be verified (new flow)
         if (kycStatus == 'OTP_VERIFIED') {
           // If we have active KYC session, proceed to verify details screen

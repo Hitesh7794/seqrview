@@ -1,6 +1,7 @@
 from django.urls import path
 from .views import (
     AadhaarKycStartView,
+    AadhaarKycResendOtpView,
     AadhaarKycSubmitOtpView,
     AadhaarKycVerifyDetailsView,
     AadhaarKycResetView,
@@ -12,6 +13,7 @@ from .views import (
 
 urlpatterns = [
     path("aadhaar/start/", AadhaarKycStartView.as_view()),
+    path("aadhaar/resend/", AadhaarKycResendOtpView.as_view()),
     path("aadhaar/submit-otp/", AadhaarKycSubmitOtpView.as_view()),
     path("aadhaar/verify-details/", AadhaarKycVerifyDetailsView.as_view()),
     path("aadhaar/reset/", AadhaarKycResetView.as_view()),
