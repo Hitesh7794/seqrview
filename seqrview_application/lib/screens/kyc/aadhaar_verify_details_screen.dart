@@ -18,7 +18,7 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
   final _fullName = TextEditingController();
   final _address = TextEditingController();
   DateTime? _dob;
-  String _gender = "M";
+  String? _gender;
   String? _selectedState;
   String? _selectedDistrict;
 
@@ -88,6 +88,11 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
     
     if (!_isDL && _dob == null) {
       setState(() => _error = "Please select Date of Birth");
+      return;
+    }
+
+    if (_gender == null) {
+      setState(() => _error = "Please select Gender");
       return;
     }
 
@@ -251,23 +256,12 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
             // -- Scrollable Content --
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
+                padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Progress Indicator
-                    Center(
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(width: 40, height: 4, decoration: BoxDecoration(color: accentColor, borderRadius: BorderRadius.circular(2))),
-                          const SizedBox(width: 8),
-                          Container(width: 40, height: 4, decoration: BoxDecoration(color: accentColor, borderRadius: BorderRadius.circular(2))),
-                          const SizedBox(width: 8),
-                          Container(width: 40, height: 4, decoration: BoxDecoration(color: borderColor, borderRadius: BorderRadius.circular(2))),
-                        ],
-                      ),
-                    ),
+
                     const SizedBox(height: 32),
 
                     Text(
@@ -336,7 +330,7 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
                               DropdownButtonFormField<String>(
                                 value: _gender,
                                 dropdownColor: cardColor,
-                                decoration: inputDeco(""),
+                                decoration: inputDeco("Select Gender"),
                                 style: TextStyle(color: textMain, fontSize: 16),
                                 icon: Icon(Icons.keyboard_arrow_down, color: textSub),
                                 items: const [
@@ -344,7 +338,7 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
                                   DropdownMenuItem(value: "F", child: Text("Female")),
                                   DropdownMenuItem(value: "O", child: Text("Other")),
                                 ],
-                                onChanged: _loading ? null : (v) => setState(() => _gender = v ?? "M"),
+                                onChanged: _loading ? null : (v) => setState(() => _gender = v),
                               ),
                             ],
                           ),

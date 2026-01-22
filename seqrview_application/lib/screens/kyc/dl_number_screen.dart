@@ -97,9 +97,21 @@ class _DLNumberScreenState extends State<DLNumberScreen> {
   }
 
   Future<void> _start() async {
-    final licenseNumber = _licenseNumber.text.trim().toUpperCase();
+    // 1. Remove hyphens/spaces to handle formatting
+    String licenseNumber = _licenseNumber.text.trim().toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+
     if (licenseNumber.isEmpty) {
       setState(() => _error = "Please enter your driving license number");
+      return;
+    }
+
+    // 2. Validate format: 
+    // Starts with 2 letters (State Code)
+    // Followed by 11 to 18 alphanumeric characters (handling various state formats like RJ14D...)
+    // Total length: 13 to 20 characters
+    final dlRegex = RegExp(r"^[A-Z]{2}[A-Z0-9]{11,18}$");
+    if (!dlRegex.hasMatch(licenseNumber)) {
+      setState(() => _error = "Invalid DL format. Please double check your number.");
       return;
     }
 

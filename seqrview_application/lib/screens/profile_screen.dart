@@ -21,7 +21,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     _loadData();
   }
 
@@ -100,7 +100,6 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           tabs: const [
             Tab(text: 'Personal Info'),
             Tab(text: 'KYC Details'),
-            Tab(text: 'Address'),
           ],
         ),
       ),
@@ -170,7 +169,6 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                           children: [
                             _buildPersonalInfoTab(),
                             _buildKycDetailsTab(),
-                            _buildAddressTab(),
                           ],
                         ),
                       ),
@@ -214,6 +212,29 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
               ),
             ],
           ),
+
+          const SizedBox(height: 16),
+          _buildInfoCard(
+            "Current Address",
+            [
+              _buildInfoRow("Address", _profileData?['current_address'] ?? 'N/A'),
+              _buildInfoRow("State", _profileData?['current_state'] ?? 'N/A'),
+              _buildInfoRow("District", _profileData?['current_district'] ?? 'N/A'),
+              _buildInfoRow("ZIP Code", _profileData?['current_zip'] ?? 'N/A'),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (_profileData?['permanent_address'] != null ||
+              _profileData?['permanent_state'] != null)
+            _buildInfoCard(
+              "Permanent Address",
+              [
+                _buildInfoRow("Address", _profileData?['permanent_address'] ?? 'N/A'),
+                _buildInfoRow("State", _profileData?['permanent_state'] ?? 'N/A'),
+                _buildInfoRow("District", _profileData?['permanent_district'] ?? 'N/A'),
+                _buildInfoRow("ZIP Code", _profileData?['permanent_zip'] ?? 'N/A'),
+              ],
+            ),
         ],
       ),
     );
@@ -304,37 +325,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     );
   }
 
-  Widget _buildAddressTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildInfoCard(
-            "Current Address",
-            [
-              _buildInfoRow("Address", _profileData?['current_address'] ?? 'N/A'),
-              _buildInfoRow("State", _profileData?['current_state'] ?? 'N/A'),
-              _buildInfoRow("District", _profileData?['current_district'] ?? 'N/A'),
-              _buildInfoRow("ZIP Code", _profileData?['current_zip'] ?? 'N/A'),
-            ],
-          ),
-          const SizedBox(height: 16),
-          if (_profileData?['permanent_address'] != null ||
-              _profileData?['permanent_state'] != null)
-            _buildInfoCard(
-              "Permanent Address",
-              [
-                _buildInfoRow("Address", _profileData?['permanent_address'] ?? 'N/A'),
-                _buildInfoRow("State", _profileData?['permanent_state'] ?? 'N/A'),
-                _buildInfoRow("District", _profileData?['permanent_district'] ?? 'N/A'),
-                _buildInfoRow("ZIP Code", _profileData?['permanent_zip'] ?? 'N/A'),
-              ],
-            ),
-        ],
-      ),
-    );
-  }
+
 
   Widget _buildInfoCard(String title, List<Widget> children) {
     return Card(

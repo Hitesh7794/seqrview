@@ -6,6 +6,10 @@
 	<string>We need your location to verify your check-in at the exam center.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
 	<string>We need your location to verify your attendance during the exam.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>We need camera access to capture your selfie for face verification.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>We need microphone access for video recording.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
