@@ -128,7 +128,12 @@ class _MobileNumberScreenState extends State<MobileNumberScreen> {
               appBar: AppBar(
                 backgroundColor: Colors.transparent,
                 elevation: 0,
-                automaticallyImplyLeading: false, 
+                automaticallyImplyLeading: false,
+                centerTitle: false,
+                title: Image.asset(
+                  'assets/images/logo.png',
+                  height: 40,
+                ),
                 actions: [
                    IconButton(
                       onPressed: () => setState(() => _isDark = !_isDark),
@@ -153,9 +158,10 @@ class _MobileNumberScreenState extends State<MobileNumberScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const SizedBox(height: 20),
+                              
                               // -- Header --
                               Text(
-                                "Operator Login",
+                                "Welcome Back!",
                                 style: TextStyle(
                                   fontSize: 32,
                                   fontWeight: FontWeight.bold,

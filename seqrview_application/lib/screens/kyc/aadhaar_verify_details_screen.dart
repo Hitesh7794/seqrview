@@ -61,7 +61,20 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
       final res = await widget.session.api.dio.get('/api/operators/profile/');
       final data = res.data as Map<String, dynamic>?;
       final method = data?['verification_method']?.toString();
-      if (mounted) setState(() => _isDL = method == 'DL');
+      final dobStr = data?['date_of_birth']?.toString();
+      
+      if (mounted) {
+        setState(() {
+          _isDL = method == 'DL';
+          if (_isDL && dobStr != null) {
+            try {
+              _dob = DateTime.parse(dobStr);
+            } catch (_) {
+              // Ignore parse error
+            }
+          }
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => _isDL = false);
     }
@@ -218,40 +231,40 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
 
     return Scaffold(
       backgroundColor: bg,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        automaticallyImplyLeading: false,
+        title: Text(
+          "Verify Details",
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: textMain,
+          ),
+        ),
+        centerTitle: false,
+        actions: [
+          IconButton(
+            onPressed: () => setState(() => _isDark = !_isDark),
+            icon: Icon(
+              _isDark ? Icons.wb_sunny_outlined : Icons.nightlight_round,
+              color: textMain,
+            ),
+            tooltip: "Toggle Theme",
+          ),
+          IconButton(
+            onPressed: () => widget.session.logout(),
+            icon: Icon(Icons.logout_rounded, color: textMain),
+            tooltip: "Logout",
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
       body: SafeArea(
         child: Column(
           children: [
-            // -- Header --
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                children: [
-                   // No Back Button as requested
-                   const SizedBox(width: 8), 
-                   
-                   // Theme & Logout
-                   const Spacer(),
-                   Row(
-                     mainAxisSize: MainAxisSize.min,
-                     children: [
-                        IconButton(
-                          onPressed: () => setState(() => _isDark = !_isDark),
-                          icon: Icon(
-                            _isDark ? Icons.wb_sunny_outlined : Icons.nightlight_round,
-                            color: textMain,
-                          ),
-                          tooltip: "Toggle Theme",
-                        ),
-                        IconButton(
-                          onPressed: () => widget.session.logout(),
-                          icon: Icon(Icons.logout_rounded, color: textMain),
-                          tooltip: "Logout",
-                        ),
-                     ],
-                   ),
-                ],
-              ),
-            ),
+            // No custom header needed
 
             // -- Scrollable Content --
             Expanded(
@@ -262,16 +275,10 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
                   children: [
                     // Progress Indicator
 
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 20),
 
-                    Text(
-                      "Verify Details",
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: textMain,
-                      ),
-                    ),
+                    // Title removed from here
+
                     const SizedBox(height: 8),
                     Text(
                       "Please enter your details as they appear on your ID document:",
@@ -289,7 +296,7 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
                     TextField(
                       controller: _fullName,
                       style: TextStyle(color: textMain),
-                      decoration: inputDeco("Full Name", hint: "John Doe"),
+                      decoration: inputDeco("Full Name", hint: "Hitesh Sharma"),
                     ),
                     const SizedBox(height: 24),
 

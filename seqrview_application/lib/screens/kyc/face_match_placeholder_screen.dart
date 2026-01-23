@@ -274,26 +274,31 @@ class _FaceMatchPlaceholderScreenState extends State<FaceMatchPlaceholderScreen>
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new_rounded, color: textColor),
-          onPressed: () => Navigator.pop(context),
+        automaticallyImplyLeading: false,
+        centerTitle: false,
+        title: Text(
+          "Face Match",
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: textColor,
+          ),
         ),
+        actions: [
+          IconButton(
+            onPressed: () => widget.session.logout(),
+            icon: Icon(Icons.logout, color: textColor),
+            tooltip: 'Logout',
+          ),
+        ],
       ),
       extendBodyBehindAppBar: true,
       body: SafeArea(
         child: Column(
           children: [
-            const SizedBox(height: 16),
-            // Header
-            Text(
-              "Face Match",
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: textColor,
-              ),
-            ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 20),
+            // Header removed from here
+
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 32),
               child: Text(
@@ -302,7 +307,7 @@ class _FaceMatchPlaceholderScreenState extends State<FaceMatchPlaceholderScreen>
                 style: TextStyle(
                   fontSize: 16,
                   color: isDark ? Colors.grey[400] : Colors.grey[600],
-                  height: 1.5,
+                  height: 1.6,
                 ),
               ),
             ),
@@ -419,18 +424,18 @@ class _FaceMatchPlaceholderScreenState extends State<FaceMatchPlaceholderScreen>
                 ),
               ),
             ),
-            const SizedBox(height: 16),
-             // Footer Label
-            Padding(
-               padding: const EdgeInsets.only(bottom: 16),
-               child: Text(
-                 "Securely verified by Liveness Detection AI",
-                 style: TextStyle(
-                   fontSize: 12, 
-                   color: isDark ? Colors.grey[600] : Colors.grey[500]
-                 ),
-               ),
-            ),
+            // const SizedBox(height: 16),
+            //  // Footer Label
+            // Padding(
+            //    padding: const EdgeInsets.only(bottom: 16),
+            //    child: Text(
+            //      "Securely verified by Liveness Detection AI",
+            //      style: TextStyle(
+            //        fontSize: 12, 
+            //        color: isDark ? Colors.grey[600] : Colors.grey[500]
+            //      ),
+            //    ),
+            // ),
           ],
         ),
       ),

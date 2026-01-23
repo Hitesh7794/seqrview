@@ -95,6 +95,13 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     return Scaffold(
       appBar: AppBar(
         title: const Text("Profile"),
+        actions: [
+          IconButton(
+            onPressed: () => widget.session.logout(),
+            icon: const Icon(Icons.logout),
+            tooltip: 'Logout',
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
@@ -127,7 +134,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(20),
-                        color: Theme.of(context).primaryColor.withOpacity(0.1),
+                        color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
                         child: Column(
                           children: [
                             // Profile Photo
@@ -241,52 +248,6 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   }
 
   Widget _buildKycDetailsTab() {
-    String _getKycMethodDisplay(String? method) {
-      switch (method) {
-        case 'AADHAAR':
-          return 'Aadhaar';
-        case 'DL':
-          return 'Driving License';
-        default:
-          return method ?? 'N/A';
-      }
-    }
-
-    String _getKycStatusDisplay(String? status) {
-      switch (status) {
-        case 'VERIFIED':
-          return 'Verified';
-        case 'FACE_PENDING':
-          return 'Face Match Pending';
-        case 'OTP_VERIFIED':
-          return 'Details Verified';
-        case 'OTP_SENT':
-          return 'OTP Sent';
-        case 'NOT_STARTED':
-          return 'Not Started';
-        case 'FAILED':
-          return 'Failed';
-        default:
-          return status ?? 'N/A';
-      }
-    }
-
-    String _getProfileStatusDisplay(String? status) {
-      switch (status) {
-        case 'VERIFIED':
-          return 'Verified';
-        case 'KYC_IN_PROGRESS':
-          return 'KYC In Progress';
-        case 'PROFILE_FILLED':
-          return 'Profile Filled';
-        case 'DRAFT':
-          return 'Draft';
-        case 'REJECTED':
-          return 'Rejected';
-        default:
-          return status ?? 'N/A';
-      }
-    }
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -379,6 +340,52 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         ],
       ),
     );
+  }
+  String _getKycMethodDisplay(String? method) {
+    switch (method) {
+      case 'AADHAAR':
+        return 'Aadhaar';
+      case 'DL':
+        return 'Driving License';
+      default:
+        return method ?? 'N/A';
+    }
+  }
+
+  String _getKycStatusDisplay(String? status) {
+    switch (status) {
+      case 'VERIFIED':
+        return 'Verified';
+      case 'FACE_PENDING':
+        return 'Face Match Pending';
+      case 'OTP_VERIFIED':
+        return 'Details Verified';
+      case 'OTP_SENT':
+        return 'OTP Sent';
+      case 'NOT_STARTED':
+        return 'Not Started';
+      case 'FAILED':
+        return 'Failed';
+      default:
+        return status ?? 'N/A';
+    }
+  }
+
+  String _getProfileStatusDisplay(String? status) {
+    switch (status) {
+      case 'VERIFIED':
+        return 'Verified';
+      case 'KYC_IN_PROGRESS':
+        return 'KYC In Progress';
+      case 'PROFILE_FILLED':
+        return 'Profile Filled';
+      case 'DRAFT':
+        return 'Draft';
+      case 'REJECTED':
+        return 'Rejected';
+      default:
+        return status ?? 'N/A';
+    }
   }
 }
 
