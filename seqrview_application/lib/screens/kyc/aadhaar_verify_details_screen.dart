@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import '../../app/session_controller.dart';
+import '../../app/onboarding_stage.dart';
 
 class AadhaarVerifyDetailsScreen extends StatefulWidget {
   final SessionController session;
@@ -27,8 +28,12 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
   bool _methodChecked = false; // Prevent multiple checks
   String? _error;
 
-  // Added for new design
-  bool _isDark = false; // Example theme state
+  // Global Theme
+  bool get _isDark => widget.session.isDark;
+  
+  void _update() {
+    if (mounted) setState(() {});
+  }
   
   // Helper for date formatting
   String _fmtDate(DateTime d) {
@@ -51,6 +56,13 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
   @override
   void initState() {
     super.initState();
+    widget.session.addListener(_update);
+    // Check if we have tempDob (from DL screen)
+    if (widget.session.tempDob != null) {
+      _dob = widget.session.tempDob;
+      _isDL = true; // Assume DL if passing tempDob
+      // _methodChecked = true; // Removed: Always verify with server to catch state mismatch
+    }
     _checkMethod();
   }
 
@@ -183,6 +195,7 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
 
   @override
   void dispose() {
+    widget.session.removeListener(_update);
     _fullName.dispose();
     _address.dispose();
     super.dispose();
@@ -229,24 +242,27 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
       );
     }
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
+        // logic to reset or go back
+        widget.session.setStage(OnboardingStage.chooseKycMethod);
+      },
+      child: Scaffold(
       backgroundColor: bg,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         automaticallyImplyLeading: false,
-        title: Text(
-          "Verify Details",
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: textMain,
-          ),
+        title: Image.asset(
+          'assets/images/logo.png',
+          height: 32,
         ),
         centerTitle: false,
         actions: [
           IconButton(
-            onPressed: () => setState(() => _isDark = !_isDark),
+            onPressed: () => widget.session.toggleTheme(),
             icon: Icon(
               _isDark ? Icons.wb_sunny_outlined : Icons.nightlight_round,
               color: textMain,
@@ -277,7 +293,16 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
 
                     const SizedBox(height: 20),
 
-                    // Title removed from here
+                    // Title
+                    Text(
+                      "Verify Details",
+                       style: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                        color: textMain,
+                        height: 1.2,
+                      ),
+                    ),
 
                     const SizedBox(height: 8),
                     Text(
@@ -479,6 +504,7 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
             ),
           ],
         ),
+      ),
       ),
     );
   }

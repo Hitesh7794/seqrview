@@ -17,9 +17,22 @@ class SessionController extends ChangeNotifier {
   String? lastAadhaarNumber;
   
   // ✅ NEW (in-memory only): Aadhaar details from OTP submission (NOT persisted)
+  // ✅ NEW (in-memory only): Aadhaar details from OTP submission (NOT persisted)
   Map<String, dynamic>? aadhaarDetails;
+  
+  // ✅ NEW (in-memory only): DOB passed from DL screen
+  DateTime? tempDob;
+
+  // Global Theme State (Default Light)
+  bool isDark = false; 
 
   SessionController({required this.api, required this.storage});
+
+  Future<void> toggleTheme() async {
+    isDark = !isDark;
+    await storage.saveTheme(isDark);
+    notifyListeners();
+  }
 
   void setStage(OnboardingStage s) {
     stage = s;
@@ -37,6 +50,8 @@ class SessionController extends ChangeNotifier {
 
   Future<void> clearKycSession() async {
     kycSessionUid = null;
+    tempDob = null;
+    aadhaarDetails = null;
     await storage.clearKycSessionUid();
   }
 
@@ -70,6 +85,7 @@ class SessionController extends ChangeNotifier {
     // load convenience values
     mobile = await storage.getMobile();
     kycSessionUid = await storage.getKycSessionUid();
+    isDark = await storage.getIsDarkTheme();
 
     final access = await storage.getAccess();
     if (access == null || access.isEmpty) {

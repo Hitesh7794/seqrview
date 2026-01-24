@@ -21,11 +21,16 @@ class _DLNumberScreenState extends State<DLNumberScreen> {
   String? _error;
 
   // Theme State
-  bool _isDark = true;
+  bool get _isDark => widget.session.isDark;
+
+  void _update() {
+    if (mounted) setState(() {});
+  }
 
   @override
   void initState() {
     super.initState();
+    widget.session.addListener(_update);
      // Set full screen mode
     SystemChrome.setSystemUIOverlayStyle(
       SystemUiOverlayStyle(
@@ -72,7 +77,7 @@ class _DLNumberScreenState extends State<DLNumberScreen> {
         return Theme(
           data: _isDark ? ThemeData.dark().copyWith(
             colorScheme: const ColorScheme.dark(
-               primary: Color(0xFF9C27B0), // Purple primary
+               primary: Color(0xFF6366F1), // Indigo primary
                onPrimary: Colors.white,
                surface: Color(0xFF1E2030),
                onSurface: Colors.white,
@@ -80,7 +85,7 @@ class _DLNumberScreenState extends State<DLNumberScreen> {
              dialogBackgroundColor: const Color(0xFF161A22),
           ) : ThemeData.light().copyWith(
              colorScheme: const ColorScheme.light(
-               primary: Color(0xFF9C27B0), // Purple primary
+               primary: Color(0xFF6366F1), // Indigo primary
                onPrimary: Colors.white,
             ),
           ),
@@ -143,13 +148,9 @@ class _DLNumberScreenState extends State<DLNumberScreen> {
       widget.session.kycSessionUid = kycUid;
       await widget.session.storage.saveKycSessionUid(kycUid);
 
-      final next = data is Map ? data['next']?.toString() : null;
-
-      if (next == "VERIFY_DETAILS") {
-        widget.session.setStage(OnboardingStage.verifyDetails);
-      } else {
-        await widget.session.bootstrap();
-      }
+      // Always proceed to Verify Details after successful start
+      widget.session.tempDob = _dob; // Save DOB for next screen
+      widget.session.setStage(OnboardingStage.verifyDetails);
     } catch (e) {
       if (e is DioException && e.response?.statusCode == 429) {
         setState(() => _error = "Rate limited. Please wait and try again.");
@@ -163,6 +164,7 @@ class _DLNumberScreenState extends State<DLNumberScreen> {
 
   @override
   void dispose() {
+    widget.session.removeListener(_update);
     _licenseNumber.dispose();
     _dobController.dispose();
     super.dispose();
@@ -177,9 +179,9 @@ class _DLNumberScreenState extends State<DLNumberScreen> {
     final cardColor = _isDark ? const Color(0xFF161A22) : Colors.white;
     final borderColor = _isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.1);
     
-    // Changed to a deeper Violet/Purple to avoid "Pink" look
-    final accentColor = const Color(0xFF7C3AED); // Violet 600
-    final accentBg = const Color(0xFFEDE9FE); 
+    // Indigo Accent (Matches Aadhaar)
+    final accentColor = const Color(0xFF6366F1); // Indigo 500
+    final inputBg = _isDark ? const Color(0xFF111318) : Colors.white; 
     
     final infoBg = _isDark ? const Color(0xFF1E2030) : const Color(0xFFEBEBFF); // Info Box
     final infoText = _isDark ? const Color(0xFFB0B0E0) : const Color(0xFF4A4A8A);
@@ -192,7 +194,13 @@ class _DLNumberScreenState extends State<DLNumberScreen> {
       ),
     );
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {
+        if (didPop) return;
+        widget.session.setStage(OnboardingStage.chooseKycMethod);
+      },
+      child: Scaffold(
       backgroundColor: bg,
       body: SafeArea(
         child: Column(
@@ -202,14 +210,8 @@ class _DLNumberScreenState extends State<DLNumberScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Row(
                 children: [
-                   // Back Button (Logic Fixed)
-                   IconButton(
-                     onPressed: () {
-                        // Use session stage management instead of Navigator.pop
-                        widget.session.setStage(OnboardingStage.chooseKycMethod);
-                     },
-                     icon: Icon(Icons.arrow_back_ios_new, size: 20, color: textMain),
-                   ),
+                   // Logo only (Back handled by system gesture)
+                   Image.asset('assets/images/logo.png', height: 32),
                    
                    // Center Title/Progress
                    Expanded(
@@ -223,7 +225,7 @@ class _DLNumberScreenState extends State<DLNumberScreen> {
                      mainAxisSize: MainAxisSize.min,
                      children: [
                         IconButton(
-                          onPressed: () => setState(() => _isDark = !_isDark),
+                          onPressed: () => widget.session.toggleTheme(),
                           icon: Icon(
                             _isDark ? Icons.wb_sunny_outlined : Icons.nightlight_round,
                             color: textMain,
@@ -245,40 +247,30 @@ class _DLNumberScreenState extends State<DLNumberScreen> {
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SizedBox(height: 24),
-                    // Shield Icon
-                    Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
-                         color: _isDark ? accentColor.withOpacity(0.1) : accentBg,
-                         shape: BoxShape.circle,
-                      ),
-                      child: Icon(Icons.security, color: accentColor, size: 36),
-                    ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 32),
                     
                     // Title
                     Text(
-                      "Verify Identity",
+                      "Driving License\nVerification",
                       style: TextStyle(
-                        fontSize: 24,
+                        fontSize: 32,
                         fontWeight: FontWeight.bold,
                         color: textMain,
+                        height: 1.2,
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 16),
                     Text(
                       "Securely link your driving license to access the elite operator portal.",
-                      textAlign: TextAlign.center,
                       style: TextStyle(
-                        fontSize: 14,
+                        fontSize: 16,
                         color: textSub,
                         height: 1.5,
                       ),
                     ),
-                    const SizedBox(height: 40),
+                    const SizedBox(height: 48),
 
                     // -- Input 1: License Number --
                     Align(
@@ -289,15 +281,15 @@ class _DLNumberScreenState extends State<DLNumberScreen> {
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
                           color: accentColor,
-                          letterSpacing: 0.5,
+                          letterSpacing: 1.0,
                         ),
                       ),
                     ),
                     const SizedBox(height: 8),
                     Container(
                       decoration: BoxDecoration(
-                        color: cardColor,
-                        borderRadius: BorderRadius.circular(12),
+                        color: inputBg,
+                        borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: borderColor),
                       ),
                       child: TextField(
@@ -324,7 +316,7 @@ class _DLNumberScreenState extends State<DLNumberScreen> {
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
                           color: accentColor,
-                          letterSpacing: 0.5,
+                          letterSpacing: 1.0,
                         ),
                       ),
                     ),
@@ -335,8 +327,8 @@ class _DLNumberScreenState extends State<DLNumberScreen> {
                       },
                       child: Container(
                         decoration: BoxDecoration(
-                          color: cardColor,
-                          borderRadius: BorderRadius.circular(12),
+                          color: inputBg,
+                          borderRadius: BorderRadius.circular(16),
                           border: Border.all(color: borderColor),
                         ),
                         child: AbsorbPointer(
@@ -421,7 +413,7 @@ class _DLNumberScreenState extends State<DLNumberScreen> {
                            foregroundColor: Colors.white,
                            disabledBackgroundColor: accentColor.withOpacity(0.5),
                            elevation: 0,
-                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         ),
                         child: _loading 
                           ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
@@ -442,6 +434,7 @@ class _DLNumberScreenState extends State<DLNumberScreen> {
             ),
           ],
         ),
+      ),
       ),
     );
   }

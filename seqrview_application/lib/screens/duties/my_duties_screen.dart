@@ -19,15 +19,25 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
   List<Assignment> _assignments = [];
   String? _error;
 
+
+  // Theme State
+  bool get _isDark => widget.session.isDark;
+
+  void _update() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
+    widget.session.addListener(_update);
     _tabController = TabController(length: 2, vsync: this);
     _loadDuties();
   }
 
   @override
   void dispose() {
+    widget.session.removeListener(_update);
     _tabController.dispose();
     super.dispose();
   }
@@ -195,7 +205,8 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // final isDark = Theme.of(context).brightness == Brightness.dark; // OLD
+    final isDark = _isDark; // NEW
     final accentColor = const Color(0xFF6366F1); // Indigo
     final bg = isDark ? const Color(0xFF0C0E11) : Colors.grey[50];
 
@@ -279,7 +290,7 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
   }
 
   Widget _buildDutyCard(Assignment assignment) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = _isDark;
     final cardColor = isDark ? const Color(0xFF161A22) : Colors.white;
     final borderColor = isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05);
 

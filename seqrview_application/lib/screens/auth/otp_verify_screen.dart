@@ -9,13 +9,11 @@ import '../../app/session_controller.dart';
 class OtpVerifySheet extends StatefulWidget {
   final SessionController session;
   final VoidCallback onClose;
-  final bool isDark; // Shared theme state
   
   const OtpVerifySheet({
     super.key, 
     required this.session,
     required this.onClose,
-    required this.isDark,
   });
 
   @override
@@ -36,12 +34,16 @@ class _OtpVerifySheetState extends State<OtpVerifySheet> {
   bool _canResend = false;
 
   // Theme State
-  late bool _isDark;
+  bool get _isDark => widget.session.isDark;
+
+  void _update() {
+    if (mounted) setState(() {});
+  }
 
   @override
   void initState() {
     super.initState();
-    _isDark = widget.isDark; // Initialize from parent
+    widget.session.addListener(_update);
     _startTimer();
     // Auto-focus the hidden input
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -163,6 +165,7 @@ class _OtpVerifySheetState extends State<OtpVerifySheet> {
 
   @override
   void dispose() {
+    widget.session.removeListener(_update);
     _timer?.cancel();
     _otpController.dispose();
     _focusNode.dispose();
@@ -373,7 +376,6 @@ class OtpVerifyScreen extends StatelessWidget {
       body: Center(
         child: OtpVerifySheet(
           session: session,
-          isDark: true, // Default to dark for direct access
           onClose: () {
              if (Navigator.canPop(context)) {
                Navigator.pop(context);

@@ -78,7 +78,12 @@ class _LivenessPlaceholderScreenState extends State<LivenessPlaceholderScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Theme
+    final isDark = widget.session.isDark;
+    final bg = isDark ? const Color(0xFF0C0E11) : Colors.white;
+
     return Scaffold(
+      backgroundColor: bg,
       appBar: AppBar(title: const Text("Face Liveness")),
       body: Padding(
         padding: const EdgeInsets.all(16),

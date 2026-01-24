@@ -9,13 +9,11 @@ import '../../app/onboarding_stage.dart';
 class AadhaarOtpSheet extends StatefulWidget {
   final SessionController session;
   final VoidCallback onClose;
-  final bool isDark;
 
   const AadhaarOtpSheet({
     super.key, 
     required this.session,
     required this.onClose,
-    required this.isDark,
   });
 
   @override
@@ -38,13 +36,17 @@ class _AadhaarOtpSheetState extends State<AadhaarOtpSheet> {
   DateTime? _cooldownEndsAt;
   Timer? _ticker;
 
-  // Theme State (inherited)
-  late bool _isDark;
+  // Theme State
+  bool get _isDark => widget.session.isDark;
+
+  void _update() {
+    if (mounted) setState(() {});
+  }
 
   @override
   void initState() {
     super.initState();
-    _isDark = widget.isDark;
+    widget.session.addListener(_update);
     _restoreCooldown();
     // Auto-focus logic
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -52,13 +54,7 @@ class _AadhaarOtpSheetState extends State<AadhaarOtpSheet> {
     });
   }
 
-  @override
-  void didUpdateWidget(AadhaarOtpSheet oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.isDark != widget.isDark) {
-      setState(() => _isDark = widget.isDark);
-    }
-  }
+  // Removed didUpdateWidget since we use listener
 
   Future<void> _restoreCooldown() async {
     final until = await widget.session.storage.getAadhaarCooldownUntil();
@@ -231,6 +227,7 @@ class _AadhaarOtpSheetState extends State<AadhaarOtpSheet> {
 
   @override
   void dispose() {
+    widget.session.removeListener(_update);
     _ticker?.cancel();
     _otpController.dispose();
     _focusNode.dispose();
@@ -483,7 +480,6 @@ class AadhaarOtpScreen extends StatelessWidget {
       body: Center(
         child: AadhaarOtpSheet(
            session: session,
-           isDark: true, 
            onClose: () async {
              await session.resetKyc();
              // resetKyc sets stage to aadhaarNumber, router should handle it

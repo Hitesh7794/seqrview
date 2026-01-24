@@ -18,15 +18,24 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   bool _loading = true;
   String? _error;
 
+  // Theme State
+  bool get _isDark => widget.session.isDark;
+
+  void _update() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
+    widget.session.addListener(_update);
     _tabController = TabController(length: 2, vsync: this);
     _loadData();
   }
 
   @override
   void dispose() {
+    widget.session.removeListener(_update);
     _tabController.dispose();
     super.dispose();
   }
@@ -134,7 +143,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(20),
-                        color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
+                        color: _isDark ? Colors.white.withOpacity(0.05) : Theme.of(context).primaryColor.withOpacity(0.1),
                         child: Column(
                           children: [
                             // Profile Photo

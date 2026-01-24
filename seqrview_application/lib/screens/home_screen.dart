@@ -15,17 +15,32 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  // Theme State
+  bool get _isDark => widget.session.isDark;
+
+  void _update() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.session.addListener(_update);
+    _loadData();
+  }
+
+  @override
+  void dispose() {
+    widget.session.removeListener(_update);
+    super.dispose();
+  }
   Map<String, dynamic>? _profileData;
   Map<String, dynamic>? _userData;
   List<Assignment> _recentDuties = [];
   bool _loading = true;
   String? _error;
 
-  @override
-  void initState() {
-    super.initState();
-    _loadData();
-  }
+
 
   Future<void> _loadData() async {
     try {
@@ -106,9 +121,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bg = _isDark ? const Color(0xFF0C0E11) : Colors.grey[50];
     return Scaffold(
+      backgroundColor: bg,
       appBar: AppBar(
         title: const Text("Home"),
+        backgroundColor: bg,
         actions: [
           IconButton(
             onPressed: () => widget.session.logout(),

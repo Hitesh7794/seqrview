@@ -13,8 +13,24 @@ class KycMethodSelectScreen extends StatefulWidget {
 }
 
 class _KycMethodSelectScreenState extends State<KycMethodSelectScreen> {
-  // Theme State - Default to Dark as per recent screens
-  bool _isDark = true;
+  // Theme State
+  bool get _isDark => widget.session.isDark;
+
+  void _update() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.session.addListener(_update);
+  }
+
+  @override
+  void dispose() {
+    widget.session.removeListener(_update);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -49,32 +65,45 @@ class _KycMethodSelectScreenState extends State<KycMethodSelectScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Top Bar: Theme & Logout
-            Align(
-              alignment: Alignment.topRight,
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      onPressed: () => setState(() => _isDark = !_isDark),
-                      icon: Icon(
-                        _isDark ? Icons.wb_sunny_outlined : Icons.nightlight_round,
-                        color: textMain,
+            // Top Bar: Logos & Actions
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Left: Logos
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Image.asset('assets/images/logo.png', height: 32),
+                      
+                    
+                    ],
+                  ),
+
+                  // Right: Actions
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        onPressed: () => widget.session.toggleTheme(),
+                        icon: Icon(
+                          _isDark ? Icons.wb_sunny_outlined : Icons.nightlight_round,
+                          color: textMain,
+                        ),
+                        tooltip: "Toggle Theme",
                       ),
-                      tooltip: "Toggle Theme",
-                    ),
-                    IconButton(
-                      onPressed: () {
-                        // print("Logout pressed"); // Debugging
-                        widget.session.logout();
-                      },
-                      icon: Icon(Icons.logout_rounded, color: textMain),
-                      tooltip: "Logout",
-                    ),
-                  ],
-                ),
+                      IconButton(
+                        onPressed: () {
+                          // print("Logout pressed"); // Debugging
+                          widget.session.logout();
+                        },
+                        icon: Icon(Icons.logout_rounded, color: textMain),
+                        tooltip: "Logout",
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
             
@@ -117,7 +146,8 @@ class _KycMethodSelectScreenState extends State<KycMethodSelectScreen> {
                       textColor: textMain,
                       subTextColor: textSub,
                       borderColor: borderColor,
-                      onTap: () {
+                      onTap: () async {
+                        await widget.session.clearKycSession();
                         widget.session.setStage(OnboardingStage.aadhaarNumber);
                       },
                     ),
@@ -134,7 +164,8 @@ class _KycMethodSelectScreenState extends State<KycMethodSelectScreen> {
                       textColor: textMain,
                       subTextColor: textSub,
                       borderColor: borderColor,
-                      onTap: () {
+                      onTap: () async {
+                        await widget.session.clearKycSession();
                         widget.session.setStage(OnboardingStage.dlNumber);
                       },
                     ),

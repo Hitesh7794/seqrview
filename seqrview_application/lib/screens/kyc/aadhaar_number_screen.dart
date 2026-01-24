@@ -22,7 +22,11 @@ class _AadhaarNumberScreenState extends State<AadhaarNumberScreen> {
   String? _error;
 
   // Theme State
-  bool _isDark = true;
+  bool get _isDark => widget.session.isDark;
+  
+  void _update() {
+    if (mounted) setState(() {});
+  }
   
   // OTP Overlay State
   bool _showOtp = false;
@@ -37,6 +41,7 @@ class _AadhaarNumberScreenState extends State<AadhaarNumberScreen> {
   @override
   void initState() {
     super.initState();
+    widget.session.addListener(_update);
     _restoreCooldown();
 
     // Set full screen mode
@@ -172,6 +177,7 @@ class _AadhaarNumberScreenState extends State<AadhaarNumberScreen> {
 
   @override
   void dispose() {
+    widget.session.removeListener(_update);
     _ticker?.cancel();
     _aadhaar.dispose();
     super.dispose();
@@ -198,234 +204,239 @@ class _AadhaarNumberScreenState extends State<AadhaarNumberScreen> {
       ),
     );
 
-    return Scaffold(
-      backgroundColor: bg,
-      body: Stack(
-        children: [
-          // 1. The Main Content (Blurred when OTP is active)
-          ImageFiltered(
-            imageFilter: ImageFilter.blur(
-              sigmaX: _showOtp ? 10.0 : 0.0,
-              sigmaY: _showOtp ? 10.0 : 0.0,
-            ),
-            child: Scaffold(
-              backgroundColor: Colors.transparent, // Transparent to show outer bg
-              body: SafeArea(
-                child: Column(
-                  children: [
-                    // -- Header --
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      child: Row(
-                        children: [
-                           // Back Button
-                           IconButton(
-                             onPressed: () {
-                                if (_showOtp) {
-                                  setState(() => _showOtp = false);
-                                } else {
-                                  widget.session.setStage(OnboardingStage.chooseKycMethod);
-                                }
-                             },
-                             icon: Icon(Icons.arrow_back_ios_new, size: 20, color: textMain),
-                           ),
-                           
-                           const Spacer(),
-                           
-                           // Theme & Logout
-                           Row(
-                             mainAxisSize: MainAxisSize.min,
-                             children: [
-                                IconButton(
-                                  onPressed: () => setState(() => _isDark = !_isDark),
-                                  icon: Icon(
-                                    _isDark ? Icons.wb_sunny_outlined : Icons.nightlight_round,
-                                    color: textMain,
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {
+        if (didPop) return;
+        
+        if (_showOtp) {
+          // If OTP sheet is showing, just hide it
+          setState(() => _showOtp = false);
+        } else {
+          // Otherwise go back to KYC method select
+          widget.session.setStage(OnboardingStage.chooseKycMethod);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: bg,
+        body: Stack(
+          children: [
+            // 1. The Main Content (Blurred when OTP is active)
+            ImageFiltered(
+              imageFilter: ImageFilter.blur(
+                sigmaX: _showOtp ? 10.0 : 0.0,
+                sigmaY: _showOtp ? 10.0 : 0.0,
+              ),
+              child: Scaffold(
+                backgroundColor: Colors.transparent, // Transparent to show outer bg
+                body: SafeArea(
+                  child: Column(
+                    children: [
+                      // -- Header --
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        child: Row(
+                          children: [
+                             // Logo only (Back handled by system gesture)
+                             Image.asset('assets/images/logo.png', height: 32),
+                             
+                             const Spacer(),
+                             
+                             // Theme & Logout
+                             Row(
+                               mainAxisSize: MainAxisSize.min,
+                               children: [
+                                  IconButton(
+                                    onPressed: () => widget.session.toggleTheme(),
+                                    icon: Icon(
+                                      _isDark ? Icons.wb_sunny_outlined : Icons.nightlight_round,
+                                      color: textMain,
+                                    ),
+                                    tooltip: "Toggle Theme",
                                   ),
-                                  tooltip: "Toggle Theme",
-                                ),
-                                IconButton(
-                                  onPressed: () => widget.session.logout(),
-                                  icon: Icon(Icons.logout_rounded, color: textMain),
-                                  tooltip: "Logout",
-                                ),
-                             ],
-                           ),
-                        ],
-                      ),
-                    ),
-                    
-                    Expanded(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        child: Column(
-                           crossAxisAlignment: CrossAxisAlignment.start,
-                           children: [
-                              const SizedBox(height: 32),
-                              Text(
-                                "Aadhaar\nVerification",
-                                style: TextStyle(
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.bold,
-                                  color: textMain,
-                                  height: 1.2,
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                "Please enter your 12-digit Aadhaar number to receive the verification OTP.",
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: textSub,
-                                  height: 1.5,
-                                ),
-                              ),
-                              const SizedBox(height: 48),
-                              
-                              // Identification Details Label
-                              Text(
-                                "IDENTIFICATION DETAILS",
-                                 style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: accentColor.withOpacity(0.8),
-                                  letterSpacing: 1.0,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              
-                              // Input Field
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: inputBg,
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(color: borderColor),
-                                ),
-                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                                child: Row(
-                                  children: [
-                                     Icon(Icons.fingerprint, color: accentColor, size: 28),
-                                     const SizedBox(width: 16),
-                                     Expanded(
-                                       child: TextField(
-                                         controller: _aadhaar,
-                                         keyboardType: TextInputType.number,
-                                         inputFormatters: [
-                                           FilteringTextInputFormatter.digitsOnly,
-                                           LengthLimitingTextInputFormatter(12),
-                                         ],
-                                         style: TextStyle(
-                                           color: textMain,
-                                           fontSize: 18, 
-                                           letterSpacing: 2.0,
-                                           fontFamily: 'RobotoMono', 
-                                           fontWeight: FontWeight.w500
-                                         ),
-                                         decoration: InputDecoration(
-                                           border: InputBorder.none,
-                                           hintText: "0000 0000 0000",
-                                           hintStyle: TextStyle(
-                                             color: textSub.withOpacity(0.3),
-                                             letterSpacing: 2.0,
-                                           ),
-                                         ),
-                                       ),
-                                     )
-                                  ],
-                                ),
-                              ),
-                              
-                              const SizedBox(height: 24),
-                              Text(
-                                "Your data is encrypted and securely processed via UIDAI.",
-                                style: TextStyle(
-                                   color: textSub.withOpacity(0.6),
-                                   fontSize: 12,
-                                   fontStyle: FontStyle.italic,
-                                ),
-                              ),
-
-                              if (_error != null) ...[
-                                const SizedBox(height: 24),
-                                 Center(
-                                   child: Text(
-                                     _error!,
-                                     style: const TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.w500),
-                                     textAlign: TextAlign.center,
-                                   ),
-                                 ),
-                              ],
-                              
-                              if (_cooldown > 0) ...[
-                                 const SizedBox(height: 16),
-                                 Center(
-                                   child: Text(
-                                     "Wait ${_cooldown}s to retry",
-                                     style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
-                                   ),
-                                 ),
-                              ]
-                           ],
+                                  IconButton(
+                                    onPressed: () => widget.session.logout(),
+                                    icon: Icon(Icons.logout_rounded, color: textMain),
+                                    tooltip: "Logout",
+                                  ),
+                               ],
+                             ),
+                          ],
                         ),
                       ),
-                    ),
-                    
-                    // Bottom Button
-                    Padding(
-                       padding: const EdgeInsets.all(24),
-                       child: SizedBox(
-                          width: double.infinity,
-                          height: 56,
-                          child: ElevatedButton(
-                            onPressed: (_loading || _cooldown > 0) ? null : _start,
-                            style: ElevatedButton.styleFrom(
-                               backgroundColor: accentColor,
-                               foregroundColor: Colors.white,
-                               disabledBackgroundColor: accentColor.withOpacity(0.5),
-                               elevation: 0,
-                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                            ),
-                            child: _loading 
-                              ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                              : Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Text("Send Aadhaar OTP", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                                    const SizedBox(width: 8),
-                                    const Icon(Icons.arrow_forward_rounded, size: 20)
-                                  ],
-                                )
+                      
+                      Expanded(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: Column(
+                             crossAxisAlignment: CrossAxisAlignment.start,
+                             children: [
+                                const SizedBox(height: 32),
+                                Text(
+                                  "Aadhaar\nVerification",
+                                  style: TextStyle(
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.bold,
+                                    color: textMain,
+                                    height: 1.2,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  "Please enter your 12-digit Aadhaar number to receive the verification OTP.",
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: textSub,
+                                    height: 1.5,
+                                  ),
+                                ),
+                                const SizedBox(height: 48),
+                                
+                                // Identification Details Label
+                                Text(
+                                  "IDENTIFICATION DETAILS",
+                                   style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: accentColor.withOpacity(0.8),
+                                    letterSpacing: 1.0,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                
+                                // Input Field
+                                Container(
+                                  decoration: BoxDecoration(
+                                    color: inputBg,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: borderColor),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                                  child: Row(
+                                    children: [
+                                       Icon(Icons.fingerprint, color: accentColor, size: 28),
+                                       const SizedBox(width: 16),
+                                       Expanded(
+                                         child: TextField(
+                                           controller: _aadhaar,
+                                           keyboardType: TextInputType.number,
+                                           inputFormatters: [
+                                             FilteringTextInputFormatter.digitsOnly,
+                                             LengthLimitingTextInputFormatter(12),
+                                           ],
+                                           style: TextStyle(
+                                             color: textMain,
+                                             fontSize: 18, 
+                                             letterSpacing: 2.0,
+                                             fontFamily: 'RobotoMono', 
+                                             fontWeight: FontWeight.w500
+                                           ),
+                                           decoration: InputDecoration(
+                                             border: InputBorder.none,
+                                             hintText: "0000 0000 0000",
+                                             hintStyle: TextStyle(
+                                               color: textSub.withOpacity(0.3),
+                                               letterSpacing: 2.0,
+                                             ),
+                                           ),
+                                         ),
+                                       )
+                                    ],
+                                  ),
+                                ),
+                                
+                                const SizedBox(height: 24),
+                                Text(
+                                  "Your data is encrypted and securely processed via UIDAI.",
+                                  style: TextStyle(
+                                     color: textSub.withOpacity(0.6),
+                                     fontSize: 12,
+                                     fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+  
+                                if (_error != null) ...[
+                                  const SizedBox(height: 24),
+                                   Center(
+                                     child: Text(
+                                       _error!,
+                                       style: const TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.w500),
+                                       textAlign: TextAlign.center,
+                                     ),
+                                   ),
+                                ],
+                                
+                                if (_cooldown > 0) ...[
+                                   const SizedBox(height: 16),
+                                   Center(
+                                     child: Text(
+                                       "Wait ${_cooldown}s to retry",
+                                       style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+                                     ),
+                                   ),
+                                ]
+                             ],
                           ),
-                       ),
-                    ),
-                  ],
+                        ),
+                      ),
+                      
+                      // Bottom Button
+                      Padding(
+                         padding: const EdgeInsets.all(24),
+                         child: SizedBox(
+                            width: double.infinity,
+                            height: 56,
+                            child: ElevatedButton(
+                              onPressed: (_loading || _cooldown > 0) ? null : _start,
+                              style: ElevatedButton.styleFrom(
+                                 backgroundColor: accentColor,
+                                 foregroundColor: Colors.white,
+                                 disabledBackgroundColor: accentColor.withOpacity(0.5),
+                                 elevation: 0,
+                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              ),
+                              child: _loading 
+                                ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                : Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Text("Send Aadhaar OTP", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                      const SizedBox(width: 8),
+                                      const Icon(Icons.arrow_forward_rounded, size: 20)
+                                    ],
+                                  )
+                            ),
+                         ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-
-          // 2. The OTP Sheet Overlay
-          if (_showOtp)
-            Container(color: Colors.black.withOpacity(0.3)), // Additional dimming
-
-          AnimatedPositioned(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOutCubic,
-            left: 0,
-            right: 0,
-            bottom: _showOtp ? 0 : -600, // Slide up/down
-            child: _showOtp 
-              ? AadhaarOtpSheet(
-                  session: widget.session, 
-                  isDark: _isDark,
-                  onClose: () async {
-                    setState(() => _showOtp = false);
-                    await widget.session.resetKyc();
-                  },
-                ) 
-              : const SizedBox.shrink(),
-          ),
-        ],
+  
+            // 2. The OTP Sheet Overlay
+            if (_showOtp)
+              Container(color: Colors.black.withOpacity(0.3)), // Additional dimming
+  
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOutCubic,
+              left: 0,
+              right: 0,
+              bottom: _showOtp ? 0 : -600, // Slide up/down
+              child: _showOtp 
+                ? AadhaarOtpSheet(
+                    session: widget.session, 
+                    // isDark removed
+                    onClose: () async {
+                      setState(() => _showOtp = false);
+                      await widget.session.resetKyc();
+                    },
+                  ) 
+                : const SizedBox.shrink(),
+            ),
+          ],
+        ),
       ),
     );
   }

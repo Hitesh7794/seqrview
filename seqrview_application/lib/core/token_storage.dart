@@ -12,6 +12,14 @@ class TokenStorage {
 
   // ✅ NEW: persistent cooldown (Aadhaar OTP request)
   static const _aadhaarCooldownUntilKey = 'aadhaar_otp_cooldown_until';
+  static const _themeKey = 'app_theme_is_dark';
+
+  Future<void> saveTheme(bool isDark) => _storage.write(key: _themeKey, value: isDark.toString());
+  
+  Future<bool> getIsDarkTheme() async {
+    final val = await _storage.read(key: _themeKey);
+    return val == 'true'; // Default false (Light) if null
+  }
 
   Future<void> saveTokens({required String access, required String refresh}) async {
     await _storage.write(key: _accessKey, value: access);

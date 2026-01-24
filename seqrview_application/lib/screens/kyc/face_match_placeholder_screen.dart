@@ -1,10 +1,13 @@
 import 'dart:io';
+import 'dart:ui' as ui;
+import 'package:flutter/rendering.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:permission_handler/permission_handler.dart';
+import '../../app/onboarding_stage.dart';
 import '../../app/session_controller.dart';
 
 class FaceMatchPlaceholderScreen extends StatefulWidget {
@@ -29,20 +32,52 @@ class _FaceMatchPlaceholderScreenState extends State<FaceMatchPlaceholderScreen>
   bool _isCameraInitialized = false;
   bool _isProcessing = false;
   bool _isFaceDetected = false;
+  String _statusMessage = "Scanning environment...";
   bool _loading = false;
   String? _error;
   CameraDescription? _frontCamera;
+  
+  // Snapshot State
+  final GlobalKey _previewKey = GlobalKey();
+  Uint8List? _frozenImage;
+
+  // Theme State
+  bool get isDark => widget.session.isDark;
+
+  void _update() {
+    if (mounted) setState(() {});
+  }
+  
+  Future<void> _capturePreviewSnapshot() async {
+    try {
+      final boundary = _previewKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) return;
+      
+      // Capture the current frame as an image
+      final image = await boundary.toImage(); 
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      final pngBytes = byteData?.buffer.asUint8List();
+      
+      if (mounted && pngBytes != null) {
+        setState(() => _frozenImage = pngBytes);
+      }
+    } catch (e) {
+      // Ignore screenshot errors (fallback to normal behavior)
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    widget.session.addListener(_update);
     _initializeCamera();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    widget.session.removeListener(_update);
     _stopCamera();
     _faceDetector.close();
     super.dispose();
@@ -119,11 +154,57 @@ class _FaceMatchPlaceholderScreenState extends State<FaceMatchPlaceholderScreen>
       }
 
       final faces = await _faceDetector.processImage(inputImage);
-      // Simple liveness: Just check if any face is detected
-      final hasFace = faces.isNotEmpty;
       
-      if (mounted && hasFace != _isFaceDetected) {
-         setState(() => _isFaceDetected = hasFace);
+      bool validFace = false;
+      String statusMsg = "Scanning environment...";
+
+      if (faces.isNotEmpty) {
+        final face = faces.first;
+        final bbox = face.boundingBox;
+        final imgSize = inputImage.metadata?.size ?? const Size(1, 1);
+        
+        // Simple validation logic
+        // 1. Center check (Horizontal)
+        final imgCenterX = imgSize.width / 2;
+        final imgCenterY = imgSize.height / 2;
+        
+        final faceCenterX = bbox.center.dx;
+        final faceCenterY = bbox.center.dy;
+        
+        final diffX = (faceCenterX - imgCenterX).abs();
+        final diffY = (faceCenterY - imgCenterY).abs();
+        
+        // 2. Size check (Fill roughly 20-30% of width)
+        final faceWidth = bbox.width;
+        
+        // Thresholds (tunable)
+        final relativeDistX = diffX / imgSize.width;
+        final relativeDistY = diffY / imgSize.height; // Vertical deviation
+        final relativeSize = faceWidth / imgSize.width;
+
+        // SKIP validation if image size is tiny (metadata missing) to prevent lock-out
+        if (imgSize.width < 100) {
+           validFace = true;
+           statusMsg = "Face Detected";
+        } else if (relativeSize < 0.20) {
+          statusMsg = "Move Closer";
+        } else if (relativeDistX > 0.35 || relativeDistY > 0.45) { // Relaxed: 35% X, 45% Y deviation
+          statusMsg = "Center Your Face";
+        } else {
+          validFace = true;
+          statusMsg = "Face Detected";
+        }
+      } else {
+        statusMsg = "No Face Detected";
+      }
+      
+      if (mounted) {
+         if (validFace != _isFaceDetected || _statusMessage != statusMsg) {
+             setState(() {
+               _isFaceDetected = validFace;
+               _statusMessage = statusMsg;
+             });
+         }
       }
     } catch (e) {
       // debugPrint("Face detect error: $e");
@@ -137,39 +218,46 @@ class _FaceMatchPlaceholderScreenState extends State<FaceMatchPlaceholderScreen>
     if (_controller == null || !_controller!.value.isInitialized) return;
     if (_loading) return;
 
+    // 1. VISUAL FREEZE: Capture the current preview frame immediately
+    await _capturePreviewSnapshot(); 
+
     setState(() {
       _loading = true;
       _error = null;
     });
 
     try {
-      // 1. Pause stream to "freeze" UI and prevent new detections
+      // 2. Pause stream to prevent new detections
       await _controller?.stopImageStream();
       
-      // 2. Capture
-      final XFile imageFile = await _controller!.takePicture();
+      // 3. Capture High-Res (Background)
+      // Note: We don't need pausePreview() anymore because we are showing the screenshot overlay.
+      // This prevents the "stuck" camera issue on some devices.
+      final imageFile = await _controller!.takePicture();
       
       final kycUid = widget.session.kycSessionUid;
       if (kycUid == null) throw "KYC Session missing";
 
-      // 3. Liveness Check (API)
+      // 4. Liveness Check (API) - 30s timeout
       final liveResp = await widget.session.api.dio.post(
         '/api/kyc/face/liveness/',
         data: FormData.fromMap({
           "kyc_session_uid": kycUid,
           "selfie": await MultipartFile.fromFile(imageFile.path, filename: "selfie.jpg"),
         }),
+        options: Options(receiveTimeout: const Duration(seconds: 30)),
       );
       final isLive = liveResp.data is Map && (liveResp.data['live'] == true);
       if (!isLive) throw "Liveness check failed. Please try again.";
 
-      // 4. Face Match (API)
+      // 5. Face Match (API) - 30s timeout
       await widget.session.api.dio.post(
         '/api/kyc/face/match/',
         data: FormData.fromMap({
           "kyc_session_uid": kycUid,
           "selfie": await MultipartFile.fromFile(imageFile.path, filename: "selfie.jpg"),
         }),
+        options: Options(receiveTimeout: const Duration(seconds: 30)),
       );
 
       // Success
@@ -184,7 +272,23 @@ class _FaceMatchPlaceholderScreenState extends State<FaceMatchPlaceholderScreen>
              ?? "API Error ${e.response?.statusCode}";
       }
       if (mounted) {
-         setState(() => _error = msg);
+         // Check for session expiry to redirect user
+         if (msg.toLowerCase().contains("session expired") || 
+             msg.toLowerCase().contains("invalid session") ||
+             (e is DioException && e.response?.statusCode == 404)) {
+            
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("Session expired. Please restart verification.")),
+            );
+            widget.session.setStage(OnboardingStage.chooseKycMethod);
+            return;
+         }
+
+         setState(() {
+           _error = msg;
+           _frozenImage = null; // Unfreeze UI on error
+         });
+         
          // Resume stream to try again
          try {
            await _controller?.startImageStream(_processCameraImage);
@@ -263,7 +367,7 @@ class _FaceMatchPlaceholderScreenState extends State<FaceMatchPlaceholderScreen>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    // final isDark = theme.brightness == Brightness.dark; // Use session.isDark getter instead
     
     // Colors
     final borderColor = _isFaceDetected ? const Color(0xFF10B981) : Colors.red; // Green : Red
@@ -276,13 +380,9 @@ class _FaceMatchPlaceholderScreenState extends State<FaceMatchPlaceholderScreen>
         elevation: 0,
         automaticallyImplyLeading: false,
         centerTitle: false,
-        title: Text(
-          "Face Match",
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: textColor,
-          ),
+        title: Image.asset(
+          'assets/images/logo.png',
+          height: 32,
         ),
         actions: [
           IconButton(
@@ -296,18 +396,34 @@ class _FaceMatchPlaceholderScreenState extends State<FaceMatchPlaceholderScreen>
       body: SafeArea(
         child: Column(
           children: [
-            const SizedBox(height: 20),
-            // Header removed from here
+            const SizedBox(height: 32),
+            
+            // Title moved to Body
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  "Face Match",
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: textColor,
+                    height: 1.2,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
 
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
+              padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Text(
                 "Take one selfie. We'll check liveness first, then match with your Aadhaar photo.",
-                textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 16,
                   color: isDark ? Colors.grey[400] : Colors.grey[600],
-                  height: 1.6,
+                  height: 1.5,
                 ),
               ),
             ),
@@ -328,12 +444,39 @@ class _FaceMatchPlaceholderScreenState extends State<FaceMatchPlaceholderScreen>
                       color: Colors.black, // Placeholder if camera loading
                     ),
                     clipBehavior: Clip.antiAlias,
-                    child: _isCameraInitialized && _controller != null
-                        ? AspectRatio(
-                            aspectRatio: _controller!.value.aspectRatio,
-                            child: CameraPreview(_controller!),
-                          )
-                        : const Center(child: CircularProgressIndicator(color: Colors.white)),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        // Live Camera View
+                        _isCameraInitialized && _controller != null
+                            ? RepaintBoundary(
+                                key: _previewKey,
+                                child: SizedBox(
+                                  width: 280, 
+                                  height: 280,
+                                  child: FittedBox(
+                                    fit: BoxFit.cover,
+                                    child: SizedBox(
+                                      // Swap width/height for Portrait mode to ensure correct coverage
+                                      width: _controller!.value.previewSize!.height, 
+                                      height: _controller!.value.previewSize!.width,
+                                      child: CameraPreview(_controller!),
+                                    ),
+                                  ),
+                                ),
+                              )
+                            : const Center(child: CircularProgressIndicator(color: Colors.white)),
+                        
+                        // Frozen Screenshot Overlay (Visual Feedback Only)
+                        if (_frozenImage != null)
+                          Image.memory(
+                            _frozenImage!,
+                            fit: BoxFit.cover,
+                            width: 280,
+                            height: 280,
+                          ),
+                      ],
+                    ),
                   ),
                   
                   // 2. The Border (Glow)
@@ -374,7 +517,7 @@ class _FaceMatchPlaceholderScreenState extends State<FaceMatchPlaceholderScreen>
             Text(
               _loading 
                  ? "Verifying..." 
-                 : (_isFaceDetected ? "Face Detected" : "Scanning environment..."),
+                 : _statusMessage,
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.bold,

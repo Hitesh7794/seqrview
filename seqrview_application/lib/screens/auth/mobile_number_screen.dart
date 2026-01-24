@@ -22,7 +22,17 @@ class _MobileNumberScreenState extends State<MobileNumberScreen> {
   String? _error;
   
   // Theme State
-  bool _isDark = true;
+  bool get _isDark => widget.session.isDark;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.session.addListener(_update);
+  }
+
+  void _update() {
+    if (mounted) setState(() {});
+  }
   
   // OTP Overlay State
   bool _showOtp = false;
@@ -94,6 +104,7 @@ class _MobileNumberScreenState extends State<MobileNumberScreen> {
 
   @override
   void dispose() {
+    widget.session.removeListener(_update);
     _controller.dispose();
     super.dispose();
   }
@@ -136,7 +147,7 @@ class _MobileNumberScreenState extends State<MobileNumberScreen> {
                 ),
                 actions: [
                    IconButton(
-                      onPressed: () => setState(() => _isDark = !_isDark),
+                      onPressed: () => widget.session.toggleTheme(),
                       icon: Icon(
                         _isDark ? Icons.wb_sunny_outlined : Icons.nightlight_round,
                         color: textColor,
@@ -395,7 +406,7 @@ class _MobileNumberScreenState extends State<MobileNumberScreen> {
             child: _showOtp 
               ? OtpVerifySheet(
                   session: widget.session, 
-                  isDark: _isDark,
+                  // isDark removed, handled internally
                   onClose: () => setState(() => _showOtp = false),
                 ) 
               : const SizedBox.shrink(),
