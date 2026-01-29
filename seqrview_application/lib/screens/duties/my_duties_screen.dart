@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../app/session_controller.dart';
 import '../../models/assignment.dart';
 import '../support/report_issue_screen.dart';
+import '../../widgets/support_floating_button.dart';
 
 class MyDutiesScreen extends StatefulWidget {
   final SessionController session;
@@ -135,7 +136,7 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
       return;
     }
 
-    if (mounted) setState(() => _isLoading = true);
+
 
     try {
       LocationPermission permission = await Geolocator.checkPermission();
@@ -179,18 +180,72 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
         return; 
       }
 
-      if (isCheckIn) {
-        await widget.session.api.checkIn(assignment.uid, position.latitude, position.longitude, selfiePath);
-      } else {
-        await widget.session.api.checkOut(assignment.uid, position.latitude, position.longitude);
+      // Show Loading Dialog
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext context) {
+            return Dialog(
+              backgroundColor: _isDark ? const Color(0xFF1F2937) : Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 24),
+                    Text(
+                      isCheckIn ? "Verifying Identity..." : "Processing...",
+                      style: TextStyle(
+                        fontSize: 16, 
+                        fontWeight: FontWeight.w600,
+                        color: _isDark ? Colors.white : Colors.black87
+                      ),
+                    ),
+                    if (isCheckIn) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        "Checking face match & liveness...",
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ]
+                  ],
+                ),
+              ),
+            );
+          },
+        );
       }
-      
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(isCheckIn ? "Checked In Successfully!" : "Checked Out Successfully!"), 
-        backgroundColor: Colors.green
-      ));
-      _loadDuties();
+
+      try {
+        if (isCheckIn) {
+          await widget.session.api.checkIn(assignment.uid, position.latitude, position.longitude, selfiePath);
+        } else {
+          await widget.session.api.checkOut(assignment.uid, position.latitude, position.longitude);
+        }
+
+        // Close Loading Dialog
+        if (mounted) Navigator.pop(context); 
+        
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(isCheckIn ? "Checked In Successfully!" : "Checked Out Successfully!"), 
+          backgroundColor: Colors.green
+        ));
+        _loadDuties();
+
+      } catch (e) {
+        // Close Loading Dialog on Error
+        if (mounted) Navigator.pop(context);
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Action Failed: $e"), backgroundColor: Colors.red),
+          );
+        }
+      }
 
     } catch (e) {
       if (mounted) {
@@ -199,7 +254,7 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
         );
       }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      // _isLoading removed as we use dialog now
     }
   }
 
@@ -212,24 +267,24 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
 
     return Scaffold(
       backgroundColor: bg,
+      floatingActionButton: const SupportFloatingButton(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
       appBar: AppBar(
         elevation: 0,
         backgroundColor: bg,
         automaticallyImplyLeading: false, // No back button
-        title: Text(
-          "My Duties",
-          style: TextStyle(
-            color: isDark ? Colors.white : Colors.black,
-            fontWeight: FontWeight.bold,
-            fontSize: 18,
-          ),
+        title: Image.asset(
+          'assets/images/logo.png',
+          height: 32,
         ),
         centerTitle: false, // Align left
         actions: [
           IconButton(
-            icon: Icon(Icons.logout, size: 24, color: isDark ? Colors.white : Colors.black),
-            onPressed: () => widget.session.logout(),
-          )
+            icon: Icon(Icons.refresh, size: 24, color: isDark ? Colors.white : Colors.black),
+            onPressed: _isLoading ? null : _loadDuties,
+            tooltip: "Refresh Duties",
+          ),
+
         ],
         bottom: TabBar(
           controller: _tabController,

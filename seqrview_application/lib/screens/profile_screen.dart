@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../app/session_controller.dart';
 import '../core/config.dart';
+import '../../widgets/support_floating_button.dart';
 
 class ProfileScreen extends StatefulWidget {
   final SessionController session;
@@ -73,8 +74,14 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   String _formatDate(String? dateStr) {
     if (dateStr == null || dateStr.isEmpty) return "N/A";
     try {
-      final date = DateTime.parse(dateStr);
-      return "${date.day}/${date.month}/${date.year}";
+      final date = DateTime.parse(dateStr).toLocal(); // Ensure local time
+      final d = date.day.toString().padLeft(2, '0');
+      final m = date.month.toString().padLeft(2, '0');
+      final y = date.year;
+      final h = date.hour.toString().padLeft(2, '0');
+      final min = date.minute.toString().padLeft(2, '0');
+      final s = date.second.toString().padLeft(2, '0');
+      return "$d/$m/$y $h:$min:$s";
     } catch (_) {
       return dateStr;
     }
@@ -89,36 +96,84 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
       return photoStr;
     }
     // Handle relative URLs - Django serves media at /media/
-    // Photo path from DB is like "user_photos/selfie_z1Qpe20.jpg"
-    // We need to prepend /media/ to it
     if (photoStr.startsWith('/')) {
-      // Already has leading slash, just prepend base URL
       return '$apiBaseUrl$photoStr';
     }
-    // No leading slash, add /media/ prefix
     return '$apiBaseUrl/media/$photoStr';
+  }
+  
+  void _showSettingsModal() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      backgroundColor: _isDark ? const Color(0xFF1E2433) : Colors.white,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              // Grabber Handle
+              Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[400],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              
+              // Theme Toggle
+              ListTile(
+                leading: Icon(
+                  _isDark ? Icons.light_mode : Icons.dark_mode, 
+                  color: _isDark ? Colors.amber : Colors.indigo
+                ),
+                title: Text(
+                  _isDark ? "Switch to Light Mode" : "Switch to Dark Mode",
+                  style: TextStyle(
+                    color: _isDark ? Colors.white : Colors.black87,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                 onTap: () {
+                  Navigator.pop(context);
+                  widget.session.toggleTheme();
+                },
+              ),
+              const Divider(),
+              
+              // Logout
+              ListTile(
+                leading: const Icon(Icons.logout, color: Colors.red),
+                title: const Text(
+                  "Logout",
+                  style: TextStyle(
+                    color: Colors.red, 
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  widget.session.logout();
+                },
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        );
+      }
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Profile"),
-        actions: [
-          IconButton(
-            onPressed: () => widget.session.logout(),
-            icon: const Icon(Icons.logout),
-            tooltip: 'Logout',
-          ),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: 'Personal Info'),
-            Tab(text: 'KYC Details'),
-          ],
-        ),
-      ),
+      backgroundColor: _isDark ? const Color(0xFF111827) : Colors.grey[50],
+      floatingActionButton: const SupportFloatingButton(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -135,52 +190,142 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                     ],
                   ),
                 )
-              : RefreshIndicator(
-                  onRefresh: _loadData,
-                  child: Column(
-                    children: [
-                      // Profile Header
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(20),
-                        color: _isDark ? Colors.white.withOpacity(0.05) : Theme.of(context).primaryColor.withOpacity(0.1),
-                        child: Column(
-                          children: [
-                            // Profile Photo
-                            CircleAvatar(
-                              radius: 50,
-                              backgroundColor: Colors.grey[300],
-                              backgroundImage: _getPhotoUrl().isNotEmpty
-                                  ? NetworkImage(_getPhotoUrl())
-                                  : null,
-                              child: _getPhotoUrl().isEmpty
-                                  ? Icon(Icons.person, size: 50, color: Colors.grey[600])
-                                  : null,
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              _userData?['full_name'] ?? 'N/A',
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
+              : Column(
+                  children: [
+                    // -- Unified Gradient Header --
+                    Container(
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: _isDark 
+                                ? [const Color(0xFF1F2937), const Color(0xFF111827)] // Dark Gradient
+                                : [const Color(0xFFFFFFFF), const Color(0xFFE8E3EF)], // User's Light Gradient
+                          ),
+                          boxShadow: [
+                             BoxShadow(
+                               color: Colors.black.withOpacity(0.05),
+                               blurRadius: 10, offset: const Offset(0, 5)
+                             )
+                          ]
+                        ),
+                        child: SafeArea(
+                          bottom: false,
+                          child: Column(
+                            children: [
+                              // 1. Top Bar (Title + Settings)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                     Image.asset(
+                                      'assets/images/logo.png',
+                                      height: 32,
+                                    ),
+                                    IconButton(
+                                      onPressed: _showSettingsModal,
+                                      icon: Icon(Icons.settings, color: _isDark ? Colors.white : Colors.black87),
+                                      tooltip: 'Settings',
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                            if (_userData?['mobile_primary'] != null) ...[
-                              const SizedBox(height: 4),
+                              
+                              const SizedBox(height: 10),
+
+                              // 2. Avatar with Green Dot
+                              Stack(
+                                children: [
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: _isDark ? Colors.white : Colors.grey[300]!, 
+                                        width: 3
+                                      ),
+                                    ),
+                                    child: CircleAvatar(
+                                      radius: 50,
+                                      backgroundColor: Colors.grey[200],
+                                      backgroundImage: _getPhotoUrl().isNotEmpty
+                                          ? NetworkImage(_getPhotoUrl())
+                                          : null,
+                                      child: _getPhotoUrl().isEmpty
+                                          ? Icon(Icons.person, size: 50, color: Colors.grey[500])
+                                          : null,
+                                    ),
+                                  ),
+                                  // Online Status Dot
+                                  Positioned(
+                                    right: 4,
+                                    bottom: 4,
+                                    child: Container(
+                                      width: 20,
+                                      height: 20,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF22C55E), // Green 500
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: Colors.white, width: 3),
+                                      ),
+                                    ),
+                                  )
+                                ],
+                              ),
+
+                              const SizedBox(height: 16),
+                              
+                              // 3. Name & Phone
                               Text(
-                                _userData?['mobile_primary'],
+                                _userData?['full_name'] ?? 'N/A',
                                 style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.grey[600],
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                  color: _isDark ? Colors.white : Colors.black87,
+                                ),
+                              ),
+                              if (_userData?['mobile_primary'] != null) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  _userData?['mobile_primary'],
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    color: _isDark ? Colors.white70 : Colors.grey[600],
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ],
+
+                              const SizedBox(height: 24),
+
+                              // 4. TabBar (Integrated)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                child: TabBar(
+                                  controller: _tabController,
+                                  labelColor: _isDark ? Colors.white : Colors.black87,
+                                  unselectedLabelColor: _isDark ? Colors.white60 : Colors.grey[500],
+                                  indicatorColor: _isDark ? Colors.white : Colors.black87,
+                                  indicatorWeight: 3,
+                                  indicatorSize: TabBarIndicatorSize.tab, // Full width
+                                  dividerColor: Colors.transparent, // Remove line
+                                  tabs: const [
+                                    Tab(text: 'Personal Info'),
+                                    Tab(text: 'KYC Details'),
+                                  ],
                                 ),
                               ),
                             ],
-                          ],
+                          ),
                         ),
                       ),
-                      // Tab Content
-                      Expanded(
-                        child: TabBarView(
+
+                    // -- Body Content --
+                    Expanded(
+                      child: RefreshIndicator(
+                         onRefresh: _loadData,
+                         child: TabBarView(
                           controller: _tabController,
                           children: [
                             _buildPersonalInfoTab(),
@@ -188,10 +333,23 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                           ],
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
     );
+  }
+
+  String _formatDOB(String? dateStr) {
+    if (dateStr == null || dateStr.isEmpty) return "N/A";
+    try {
+      final date = DateTime.parse(dateStr).toLocal();
+      final d = date.day.toString().padLeft(2, '0');
+      final m = date.month.toString().padLeft(2, '0');
+      final y = date.year.toString();
+      return "$d/$m/$y";
+    } catch (_) {
+      return dateStr;
+    }
   }
 
   Widget _buildPersonalInfoTab() {
@@ -204,9 +362,6 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
             "Personal Information",
             [
               _buildInfoRow("Full Name", _userData?['full_name'] ?? 'N/A'),
-              _buildInfoRow("First Name", _userData?['first_name'] ?? 'N/A'),
-              _buildInfoRow("Last Name", _userData?['last_name'] ?? 'N/A'),
-              _buildInfoRow("Email", _userData?['email'] ?? 'N/A'),
               _buildInfoRow("Mobile", _userData?['mobile_primary'] ?? 'N/A'),
               _buildInfoRow("Username", _userData?['username'] ?? 'N/A'),
             ],
@@ -215,7 +370,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           _buildInfoCard(
             "Additional Details",
             [
-              _buildInfoRow("Date of Birth", _formatDate(_profileData?['date_of_birth'])),
+              _buildInfoRow("Date of Birth", _formatDOB(_profileData?['date_of_birth'])),
               _buildInfoRow(
                 "Gender",
                 _profileData?['gender'] == 'M'
@@ -266,22 +421,37 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           _buildInfoCard(
             "KYC Status",
             [
-              _buildInfoRow(
+               // Custom Row with Badge for Profile Status
+              _buildStatusRow(
                 "Profile Status",
                 _getProfileStatusDisplay(_profileData?['profile_status']),
-                _profileData?['profile_status'] == 'VERIFIED' ? Colors.green : null,
+                _profileData?['profile_status'] == 'VERIFIED',
               ),
-              _buildInfoRow(
+              const SizedBox(height: 16),
+              
+              // Custom Row with Badge for KYC Status
+              _buildStatusRow(
                 "KYC Status",
                 _getKycStatusDisplay(_profileData?['kyc_status']),
-                _profileData?['kyc_status'] == 'VERIFIED' ? Colors.green : null,
+                _profileData?['kyc_status'] == 'VERIFIED',
               ),
+              const SizedBox(height: 16),
+
+              // Standard Rows
               _buildInfoRow(
                 "Verification Method",
                 _getKycMethodDisplay(_profileData?['verification_method']),
+                null, 
+                true // bold value
               ),
               if (_profileData?['kyc_verified_at'] != null)
-                _buildInfoRow("Verified On", _formatDate(_profileData?['kyc_verified_at'])),
+                _buildInfoRow(
+                   "Verified On", 
+                   _formatDate(_profileData?['kyc_verified_at']),
+                   null,
+                   true
+                ),
+                
               if (_profileData?['kyc_fail_reason'] != null)
                 _buildInfoRow(
                   "Failure Reason",
@@ -298,52 +468,118 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
 
 
   Widget _buildInfoCard(String title, List<Widget> children) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+    // Dynamic Colors
+    final cardColor = _isDark ? const Color(0xFF1F2937) : Colors.white;
+    final titleColor = _isDark ? Colors.white : const Color(0xFF111827);
+    final borderColor = _isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05);
+    
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(16), // Modern Rounded
+        border: Border.all(color: borderColor),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(_isDark ? 0.3 : 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: titleColor,
+              letterSpacing: 0.5,
             ),
-            const SizedBox(height: 12),
-            ...children,
-          ],
-        ),
+          ),
+          const SizedBox(height: 16),
+          ...children,
+        ],
       ),
     );
   }
 
-  Widget _buildInfoRow(String label, String value, [Color? valueColor]) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-                fontWeight: FontWeight.w500,
-              ),
-            ),
+  Widget _buildStatusRow(String label, String value, bool isVerified) {
+    final labelColor = _isDark ? Colors.grey[400] : Colors.grey[600];
+    final valueColor = _isDark ? Colors.white : Colors.black87;
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 15,
+            color: labelColor,
+            fontWeight: FontWeight.w500,
           ),
-          Expanded(
+        ),
+        if (isVerified)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: _isDark 
+                 ? const Color(0xFF064E3B) // Dark Green BG
+                 : const Color(0xFFE8F5E9), // Light Green BG
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: _isDark ? const Color(0xFF059669) : Colors.transparent, 
+                width: 1
+              )
+            ),
             child: Text(
               value,
               style: TextStyle(
-                fontSize: 14,
-                color: valueColor ?? Colors.black87,
-                fontWeight: valueColor != null ? FontWeight.bold : FontWeight.normal,
+                color: _isDark ? const Color(0xFF6EE7B7) : const Color(0xFF2E7D32),
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
               ),
+            ),
+          )
+        else
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: valueColor,
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value, [Color? valueColor, bool boldValue = false]) {
+    final labelColor = _isDark ? Colors.grey[400] : Colors.grey[600];
+    final defaultValueColor = _isDark ? Colors.white : Colors.black87;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16), // Increased spacing
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween, // Space between
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 15,
+              color: labelColor,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 15,
+              color: valueColor ?? defaultValueColor,
+              fontWeight: (valueColor != null || boldValue) ? FontWeight.bold : FontWeight.w600,
             ),
           ),
         ],

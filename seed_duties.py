@@ -15,7 +15,7 @@ from assignments.models import OperatorAssignment
 def run():
     print("Starting seeder...")
     # 1. Get User
-    mobile = '6363636363'
+    mobile = '7737886504'
     try:
         user = AppUser.objects.get(mobile_primary=mobile)
         print(f"Found user: {user.username}")

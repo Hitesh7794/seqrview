@@ -316,13 +316,7 @@ class _MobileNumberScreenState extends State<MobileNumberScreen> {
 
                               // -- Center Shield Icon (Background Element) --
                               const Spacer(),
-                              Center(
-                                child: Icon(
-                                  Icons.security,
-                                  size: 120,
-                                  color: _isDark ? Colors.white.withOpacity(0.03) : Colors.black.withOpacity(0.05),
-                                ),
-                              ),
+
                               const Spacer(),
 
                               // -- Button --
