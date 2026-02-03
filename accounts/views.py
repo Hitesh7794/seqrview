@@ -9,6 +9,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.decorators import action
 
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -22,6 +23,7 @@ from .serializers import (
     MeUpdateSerializer,
     OperatorOtpRequestSerializer,
     OperatorOtpVerifySerializer,
+    AppUserSerializer,
 )
 
 User = get_user_model()
@@ -209,6 +211,41 @@ class OperatorOtpVerifyView(APIView):
             status=status.HTTP_200_OK,
         )
 
+
+from rest_framework import viewsets
+
+class AppUserViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'uid'
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.user_type == 'CLIENT_ADMIN' and user.client:
+            return User.objects.filter(client=user.client).order_by('-created_at')
+        elif user.user_type == 'INTERNAL_ADMIN' or user.is_superuser:
+            queryset = User.objects.all().order_by('-created_at')
+            user_type = self.request.query_params.get('user_type', None)
+            if user_type:
+                queryset = queryset.filter(user_type=user_type)
+            return queryset
+        return User.objects.none()
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return AdminCreateUserSerializer
+        return AppUserSerializer
+
+    @action(detail=True, methods=['post'], permission_classes=[IsInternalAdmin])
+    def request_onboarding(self, request, uid=None):
+        user = self.get_object()
+        if user.user_type != 'OPERATOR':
+            return Response({"detail": "Onboarding can only be requested for operators."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Simulate sending message
+        print(f"DEBUG: REQUESTING ONBOARDING for operator {user.username} (Mobile: {user.mobile_primary})")
+        # In real world, we would trigger SMS gateway here or create a new OTP session
+        
+        return Response({"detail": f"Onboarding request sent for {user.username}"})
 
 class BlacklistTokenView(APIView):
     permission_classes = [IsAuthenticated]

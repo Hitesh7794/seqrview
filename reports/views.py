@@ -8,32 +8,32 @@ from assignments.models import OperatorAssignment
 from support.models import Incident
 
 class DailySummaryView(APIView):
-    permission_classes = [IsInternalAdmin]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        today = timezone.now().date()
+        user = self.request.user
         
-        # 1. Assignment Stats (for today's shifts)
-        # Assuming ShiftCenter has a 'date' field or we filter by shift__start_time
-        # In current models, ShiftCenter links to Shift (which is abstract time) + Date?
-        # Let's check OperatorAssignment.assigned_at or filter mostly by created_at for now 
-        # as we are in "Mock/Dev" mode. In real prod, we'd filter by Shift Date.
-        # Let's filter assignments created TODAY for simplicity, or all relevant active ones.
-        
-        # Using 'assigned_at' implies when they were assigned. 
-        # Ideally we want "Active Duties for Today".
-        # Let's aggregate ALL assignments for now or filter by status.
-        
+        # Scoping logic
         assignments = OperatorAssignment.objects.all()
-        
+        incidents = Incident.objects.all()
+
+        if user.user_type == 'CLIENT_ADMIN' and user.client:
+            assignments = assignments.filter(shift_center__exam__client=user.client)
+            incidents = incidents.filter(assignment__shift_center__exam__client=user.client)
+        elif user.user_type == 'EXAM_ADMIN' and user.exam:
+            assignments = assignments.filter(shift_center__exam=user.exam)
+            incidents = incidents.filter(assignment__shift_center__exam=user.exam)
+        elif user.user_type == 'INTERNAL_ADMIN' or user.is_superuser:
+            pass # Keep all
+        else:
+            return Response({"error": "Unauthorized"}, status=403)
+
         total_assigned = assignments.count()
         checked_in = assignments.filter(status='CHECK_IN').count()
         completed = assignments.filter(status='COMPLETED').count()
         pending = assignments.filter(status='PENDING').count()
         confirmed = assignments.filter(status='CONFIRMED').count()
         
-        # 2. Incident Stats
-        incidents = Incident.objects.all()
         total_incidents = incidents.count()
         open_incidents = incidents.filter(status='OPEN').count()
         high_priority = incidents.filter(priority__in=['HIGH', 'CRITICAL'], status='OPEN').count()
@@ -41,9 +41,9 @@ class DailySummaryView(APIView):
         return Response({
             "overview": {
                 "total_duties": total_assigned,
-                "present": checked_in + completed, # Assume completed were present
+                "present": checked_in + completed,
                 "pending": pending + confirmed,
-                "absent": 0, # To be calculated logic
+                "absent": 0,
                 "attendance_rate": round(((checked_in + completed) / total_assigned * 100) if total_assigned else 0, 1)
             },
             "incidents": {

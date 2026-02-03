@@ -57,6 +57,7 @@ class AppUser(AbstractBaseUser, PermissionsMixin, TimeStampModel):
         ("CLIENT_ADMIN", "Client Admin"),
         ("CLIENT_VIEWER", "Client Viewer"),
         ("INTERNAL_ADMIN", "Internal Admin"),
+        ("EXAM_ADMIN", "Exam Admin"),
     )
 
     STATUSES = (
@@ -79,6 +80,12 @@ class AppUser(AbstractBaseUser, PermissionsMixin, TimeStampModel):
 
     user_type = models.CharField(max_length=30, choices=USER_TYPES, default="OPERATOR")
     status = models.CharField(max_length=30, choices=STATUSES, default="ACTIVE")
+    
+    # Optional link to a Client entity if this user is a Client Admin/Viewer
+    client = models.ForeignKey('masters.Client', on_delete=models.SET_NULL, null=True, blank=True, related_name='users')
+    
+    # Optional link to an Exam entity if this user is an Exam Admin
+    exam = models.ForeignKey('operations.Exam', on_delete=models.SET_NULL, null=True, blank=True, related_name='users')
 
     mobile_primary = models.CharField(max_length=15, null=True, blank=True)
     photo = models.ImageField(upload_to='user_photos/', null=True, blank=True)  # Store selfie after face match verification

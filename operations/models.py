@@ -31,6 +31,10 @@ class Exam(TimeStampedUUIDModel):
     description = models.TextField(null=True, blank=True)
     attachments_url = models.TextField(null=True, blank=True)
     
+    # Auto-generated Admin Credentials
+    admin_username = models.CharField(max_length=150, null=True, blank=True)
+    admin_password = models.CharField(max_length=128, null=True, blank=True)
+    
    
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -56,6 +60,31 @@ class Exam(TimeStampedUUIDModel):
     
     def __str__(self):
         return f"{self.name} ({self.exam_code})"
+
+    def save(self, *args, **kwargs):
+        is_new = self._state.adding
+        super().save(*args, **kwargs)
+        
+        if is_new:
+            # Auto-create Exam Admin User
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            
+            username = f"{self.exam_code}_admin".lower()
+            password = f"{self.exam_code}@123"
+            
+            self.admin_username = username
+            self.admin_password = password
+            self.save(update_fields=['admin_username', 'admin_password'])
+
+            if not User.objects.filter(username=username).exists():
+                User.objects.create_user(
+                    username=username,
+                    password=password,
+                    user_type='EXAM_ADMIN',
+                    exam=self,
+                    is_active=True
+                )
 
 
 class Shift(TimeStampedUUIDModel):

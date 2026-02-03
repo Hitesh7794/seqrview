@@ -4,7 +4,7 @@ from django.http import JsonResponse
 from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
-from accounts.views import BlacklistTokenView
+from accounts.views import BlacklistTokenView, MeView
 
 def health(_request):
     return JsonResponse({"ok": True})
@@ -17,6 +17,7 @@ urlpatterns = [
     path("api/auth/token/", TokenObtainPairView.as_view()),
     path("api/auth/token/refresh/", TokenRefreshView.as_view()),
     path("api/auth/logout/", BlacklistTokenView.as_view()),
+    path("api/auth/me/", MeView.as_view()),
 
     # "service-like" routes
     path("api/identity/", include("accounts.urls")),
@@ -24,7 +25,7 @@ urlpatterns = [
     path("api/kyc/", include("kyc.urls")),
 
 
-    path("api/masters/",include("masters.urls")),
+    path("api/",include("masters.urls")),
     path("api/operations/", include("operations.urls")),
     path("api/assignments/", include("assignments.urls")),
 

@@ -1,7 +1,14 @@
 from rest_framework import serializers
 from .models import Exam, Shift, ExamCenter, ShiftCenter
+from masters.models import Client
 
 class ExamSerializer(serializers.ModelSerializer):
+    client = serializers.SlugRelatedField(slug_field='uid', queryset=Client.objects.all())
+    client_name = serializers.ReadOnlyField(source='client.name')
+    created_by_username = serializers.ReadOnlyField(source='created_by.username')
+    created_by_name = serializers.ReadOnlyField(source='created_by.full_name')
+    created_by_role = serializers.ReadOnlyField(source='created_by.user_type')
+
     class Meta:
         model = Exam
         fields = '__all__'

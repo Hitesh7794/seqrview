@@ -1,6 +1,7 @@
 from dataclasses import fields
 from django.utils.http import MAX_URL_LENGTH
 from django.db import models
+from django.utils.text import slugify
 
 from common.models import TimeStampedUUIDModel
 
@@ -15,6 +16,10 @@ class Client(TimeStampedUUIDModel):
     primary_contact_name = models.CharField(max_length=150, null=True, blank=True)
     primary_contact_email = models.EmailField(null=True, blank=True)
     primary_contact_phone = models.CharField(max_length=15, null=True, blank=True)
+    
+    # Credentials for Admin View
+    admin_username = models.CharField(max_length=150, null=True, blank=True)
+    admin_password = models.CharField(max_length=150, null=True, blank=True)
 
     secondary_contact_name = models.CharField(max_length=150, null=True, blank=True)
     secondary_contact_email = models.EmailField(null=True, blank=True)
@@ -51,6 +56,11 @@ class Client(TimeStampedUUIDModel):
 
         ]
     
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.name)
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.name} {self.client_code}"
 

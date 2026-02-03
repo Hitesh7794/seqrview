@@ -6,14 +6,19 @@ from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from operators.models import OperatorProfile
+from operators.serializers import OperatorProfileSerializer
 
 
 
 
 class MeSerializer(serializers.ModelSerializer):
+    client = serializers.SlugRelatedField(slug_field='uid', read_only=True)
+    exam = serializers.SlugRelatedField(slug_field='exam_code', read_only=True)
+
     class Meta:
         model = AppUser
-        fields = ["uid", "username", "email", "first_name", "last_name", "middle_name", "full_name", "user_type", "status", "mobile_primary", "photo"]
+        fields = ["uid", "username", "email", "first_name", "last_name", "middle_name", "full_name", "user_type", "status", "mobile_primary", "photo", "client", "exam"]
+        read_only_fields = ["client", "exam"]
 
 
 class MeUpdateSerializer(serializers.ModelSerializer):
@@ -118,6 +123,14 @@ class AdminCreateUserSerializer(serializers.Serializer):
             "status": getattr(user, "status", None),
         }
     
+class AppUserSerializer(serializers.ModelSerializer):
+    operator_profile = OperatorProfileSerializer(read_only=True)
+    
+    class Meta:
+        model = User
+        fields = ["uid", "username", "email", "first_name", "last_name", "full_name", "user_type", "status", "mobile_primary", "photo", "is_active", "created_at", "operator_profile"]
+        read_only_fields = ["uid", "created_at", "username"] # Username shouldn't change typically
+
 class OperatorOtpRequestSerializer(serializers.Serializer):
     mobile = serializers.CharField(min_length=8, max_length=15)
 

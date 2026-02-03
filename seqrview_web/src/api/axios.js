@@ -16,15 +16,48 @@ api.interceptors.request.use(config => {
     return config;
 });
 
-// Response Interceptor: Handle Refresh Logic?
-// For now, let's keep it simple: If 401, logout.
-api.interceptors.response.use(response => response, error => {
-    if (error.response && error.response.status === 401) {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-        window.location.href = '/login';
+// Response Interceptor: Handle Token Refresh & Expiry
+api.interceptors.response.use(
+    (response) => response,
+    async (error) => {
+        const originalRequest = error.config;
+
+        // If error is 401 and we haven't tried to refresh yet
+        if (error.response && error.response.status === 401 && !originalRequest._retry) {
+            originalRequest._retry = true;
+            const refreshToken = localStorage.getItem('refresh_token');
+
+            if (refreshToken) {
+                try {
+                    // Attempt to get a new access token
+                    // We use axios directly to avoid interceptors for this specific call
+                    const response = await axios.post('http://127.0.0.1:8000/api/auth/token/refresh/', {
+                        refresh: refreshToken
+                    });
+
+                    const newAccessToken = response.data.access;
+                    localStorage.setItem('access_token', newAccessToken);
+
+                    // Update header and retry original request
+                    originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+                    return api(originalRequest);
+                } catch (refreshError) {
+                    console.error("Refresh token expired or invalid", refreshError);
+                    // Clear storage and redirect to login if refresh fails
+                    localStorage.removeItem('access_token');
+                    localStorage.removeItem('refresh_token');
+                    localStorage.removeItem('user');
+                    window.location.href = '/login';
+                }
+            } else {
+                // No refresh token available, just logout
+                localStorage.clear();
+                window.location.href = '/login';
+            }
+        }
+
+        return Promise.reject(error);
     }
-    return Promise.reject(error);
-});
+);
 
 export default api;

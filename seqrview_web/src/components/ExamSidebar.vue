@@ -6,7 +6,6 @@
         <div class="h-20 w-25 rounded-lg flex items-center justify-center overflow-hidden">
            <img src="/logo.png" alt="SEQRView Logo" class="h-full w-full object-contain">
         </div>
-       
       </div>
     </div>
 
@@ -23,33 +22,48 @@
         <span>{{ item.name }}</span>
       </router-link>
     </nav>
+
+    <!-- Context Footer (Exam Details) -->
+    <div v-if="examCode" class="p-4 bg-gray-50 border-t border-gray-100 mx-2 mb-4 rounded-xl">
+        <div class="text-[10px] uppercase text-gray-400 font-bold mb-1">Active Exam</div>
+        <div class="text-xs font-bold text-blue-600 truncate uppercase">{{ examCode }}</div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { 
   Squares2X2Icon, 
-  UsersIcon, 
-  BuildingOfficeIcon, 
-  ClipboardDocumentCheckIcon,
-  ChartBarIcon 
+  ClockIcon, 
+  MapPinIcon,
+  DocumentChartBarIcon,
+  ChevronLeftIcon
 } from '@heroicons/vue/24/outline';
 
-import { useAuthStore } from '../stores/auth';
+import { useRoute } from 'vue-router';
 import { computed } from 'vue';
 
-const authStore = useAuthStore();
-
-const allNavItems = [
-  { name: 'Dashboard', path: '/', icon: Squares2X2Icon, roles: ['INTERNAL_ADMIN', 'CLIENT_ADMIN'] },
-  { name: 'Exams', path: '/operations/exams', icon: ClipboardDocumentCheckIcon, roles: ['INTERNAL_ADMIN', 'CLIENT_ADMIN'] },
-  { name: 'Operators', path: '/masters/operators', icon: ClipboardDocumentCheckIcon, roles: ['INTERNAL_ADMIN'] },
-  { name: 'Clients', path: '/masters/clients', icon: UsersIcon, roles: ['INTERNAL_ADMIN'] },
-];
+const route = useRoute();
+const examCode = computed(() => route.params.code);
 
 const navItems = computed(() => {
-    const userRole = authStore.user?.user_type;
-    return allNavItems.filter(item => !item.roles || item.roles.includes(userRole));
+    const code = examCode.value;
+    if (!code) return [];
+
+    return [
+        { name: 'Exam Dashboard', path: `/exam/${code}`, icon: Squares2X2Icon },
+        { name: 'Manage Shifts', path: `/exam/${code}/shifts`, icon: ClockIcon },
+        { name: 'Exam Centers', path: `/exam/${code}/centers`, icon: MapPinIcon },
+        { name: 'Live Reports', path: `/exam/${code}/reports`, icon: DocumentChartBarIcon },
+        { name: 'Back to Admin', path: '/operations/exams', icon: ChevronLeftIcon, roles: ['INTERNAL_ADMIN', 'CLIENT_ADMIN'] }
+    ].filter(item => {
+        if (item.name === 'Back to Admin') {
+            // Only show if user is actually an admin/client
+            // Actually let's keep it simple for now and just show it if they have access
+            return true; 
+        }
+        return true;
+    });
 });
 </script>
 
@@ -70,7 +84,6 @@ const navItems = computed(() => {
     @apply text-gray-400 group-hover:text-gray-600;
 }
 
-/* Active State: Blue Background Accent for Light Theme */
 .active-nav {
   @apply bg-blue-50 text-blue-700 font-bold !important;
 }

@@ -11,9 +11,14 @@ class AttendanceLogViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_staff or user.is_superuser:
-            return AttendanceLog.objects.all()
-        return AttendanceLog.objects.filter(assignment__operator=user)
+        qs = AttendanceLog.objects.all()
+        if user.is_staff or user.is_superuser or user.user_type == 'INTERNAL_ADMIN':
+            return qs
+        elif user.user_type == 'CLIENT_ADMIN' and user.client:
+            return qs.filter(assignment__shift_center__exam__client=user.client)
+        elif user.user_type == 'EXAM_ADMIN' and user.exam:
+            return qs.filter(assignment__shift_center__exam=user.exam)
+        return qs.filter(assignment__operator=user)
 
     def create(self, request, *args, **kwargs):
         # 1. Get Coordinates from Request

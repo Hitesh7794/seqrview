@@ -1,4 +1,4 @@
 const String apiBaseUrl = String.fromEnvironment(
   'API_BASE_URL',
-  defaultValue: 'https://7e52c2753992.ngrok-free.app',
+  defaultValue: 'https://ef8197622f52.ngrok-free.app',
 );

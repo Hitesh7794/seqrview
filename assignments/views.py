@@ -14,7 +14,11 @@ class OperatorAssignmentViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         if user.is_staff or getattr(user, 'user_type', '') == 'INTERNAL_ADMIN':
-            return OperatorAssignment.objects.all()
+            queryset = OperatorAssignment.objects.all()
+            operator_id = self.request.query_params.get('operator', None)
+            if operator_id:
+                queryset = queryset.filter(operator__uid=operator_id)
+            return queryset
         return OperatorAssignment.objects.filter(operator=user)
 
     @action(detail=False, methods=['get'], url_path='my-duties')
