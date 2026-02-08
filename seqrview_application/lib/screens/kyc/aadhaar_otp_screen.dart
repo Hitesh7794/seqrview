@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../app/session_controller.dart';
 import '../../app/onboarding_stage.dart';
+import '../../widgets/global_support_button.dart';
 
 class AadhaarOtpSheet extends StatefulWidget {
   final SessionController session;
@@ -100,12 +101,79 @@ class _AadhaarOtpSheetState extends State<AadhaarOtpSheet> {
 
   String _prettyError(Object e) {
     if (e is DioException) {
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.sendTimeout) {
+        return "The verification service is taking too long to respond. Please check your internet or try again later.";
+      }
+      if (e.type == DioExceptionType.connectionError) {
+        return "Cannot connect to the verification service. Please check your internet connection.";
+      }
+
       final data = e.response?.data;
-      if (data is Map && data['detail'] != null) return data['detail'].toString();
-      if (data is Map && data['reason'] != null) return data['reason'].toString();
-      return "Network/API error (${e.response?.statusCode ?? 'no status'})";
+      String? msg;
+      if (data is Map) {
+         msg = data['detail']?.toString() ?? data['message']?.toString() ?? data['reason']?.toString();
+      }
+      
+      if (msg != null && msg.isNotEmpty) {
+        // 1. Check for specific raw backend error patterns
+        if (msg.contains("Surepass") && msg.contains("422")) {
+           if (msg.contains("verification_failed") || msg.contains("Verification Failed")) {
+             return "Invalid OTP. Please check and enter the correct code.";
+           }
+           return "Invalid details provided. Please check and try again.";
+        }
+        
+        // 2. Return the actual error message otherwise
+        return msg; 
+      }
+      
+      return "Network error (${e.response?.statusCode ?? 'unknown'}). Please try again.";
     }
-    return e.toString();
+    return "An unexpected error occurred. Please try again.";
+  }
+
+  void _showErrorPopup(String message, {String title = "Connection Issue", IconData icon = Icons.signal_wifi_off_rounded}) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
+        backgroundColor: _isDark ? const Color(0xFF161A22) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(icon, color: Colors.orangeAccent, size: 28),
+            const SizedBox(width: 12),
+            Text(
+              title,
+              style: TextStyle(
+                color: _isDark ? Colors.white : const Color(0xFF1F2937),
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          message,
+          style: TextStyle(
+            color: _isDark ? const Color(0xFF8B949E) : const Color(0xFF4B5563),
+            fontSize: 14,
+            height: 1.5,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(
+              "OK",
+              style: TextStyle(color: Color(0xFF3B3B7A), fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _submit() async {
@@ -143,7 +211,7 @@ class _AadhaarOtpSheetState extends State<AadhaarOtpSheet> {
       final aadhaarDetails = data is Map ? data['aadhaar_details'] : null;
       
       if (aadhaarDetails is Map) {
-        widget.session.aadhaarDetails = Map<String, dynamic>.from(aadhaarDetails);
+        await widget.session.setAadhaarDetails(Map<String, dynamic>.from(aadhaarDetails));
       }
       
       if (next == "VERIFY_DETAILS") {
@@ -160,10 +228,10 @@ class _AadhaarOtpSheetState extends State<AadhaarOtpSheet> {
           return;
         }
       }
-      setState(() {
-        _attempts += 1;
-        _error = "${_prettyError(e)}  (Attempt $_attempts/$_maxAttempts)";
-      });
+      _attempts += 1;
+      _showErrorPopup("${_prettyError(e)} (Attempt $_attempts/$_maxAttempts)", 
+        title: (e is DioException && (e.type == DioExceptionType.connectionError || e.type == DioExceptionType.connectionTimeout)) ? "Connection Issue" : "Verification Failed",
+        icon: (e is DioException && (e.type == DioExceptionType.connectionError || e.type == DioExceptionType.connectionTimeout)) ? Icons.signal_wifi_off_rounded : Icons.error_outline_rounded);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -208,17 +276,20 @@ class _AadhaarOtpSheetState extends State<AadhaarOtpSheet> {
         _error = "OTP resent. Please check your mobile.";
       });
     } catch (e) {
-       if (e is DioException && e.response?.statusCode == 429) {
+      if (e is DioException && e.response?.statusCode == 429) {
         int wait = 60;
         final data = e.response?.data;
         if (data is Map && data['retry_after_seconds'] != null) {
           final v = data['retry_after_seconds'];
-          wait = v is int ? v : int.tryParse(v.toString()) ?? wait;
+          wait = v is int ? v : int.tryParse(v.toString()) ?? 60;
         }
         await _startCooldown(wait);
-        setState(() => _error = "Rate limited. Please wait ${wait}s and try again.");
+        _showErrorPopup("Rate limited. Please wait ${wait}s and try again.", title: "Too Many Attempts", icon: Icons.timer_outlined);
       } else {
-        setState(() => _error = _prettyError(e));
+        final msg = _prettyError(e);
+        _showErrorPopup(msg, 
+          title: (e is DioException && (e.type == DioExceptionType.connectionError || e.type == DioExceptionType.connectionTimeout)) ? "Connection Issue" : "Verification Error",
+          icon: (e is DioException && (e.type == DioExceptionType.connectionError || e.type == DioExceptionType.connectionTimeout)) ? Icons.signal_wifi_off_rounded : Icons.error_outline_rounded);
       }
     } finally {
       if (mounted) setState(() => _resendLoading = false);
@@ -306,9 +377,10 @@ class _AadhaarOtpSheetState extends State<AadhaarOtpSheet> {
           children: [
             // Drag Handle / Close
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween, // Changed to SpaceBetween to potentially add title left if needed, or just keep right
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                const SizedBox(width: 48), // Spacer to balance if we had leading
+                GlobalSupportButton(isDark: _isDark),
+                const SizedBox(width: 12),
                 IconButton(
                   onPressed: _handleClose, // Intercept close
                   icon: Icon(Icons.close, color: textSub, size: 28), // Slightly larger
@@ -378,7 +450,7 @@ class _AadhaarOtpSheetState extends State<AadhaarOtpSheet> {
               // Hidden TextField for Focus
                Positioned.fill(
                  child: Opacity(
-                   opacity: 0, 
+                   opacity: 0,
                    child: TextField(
                      controller: _otpController,
                      focusNode: _focusNode,
@@ -393,17 +465,8 @@ class _AadhaarOtpSheetState extends State<AadhaarOtpSheet> {
             ],
           ),
 
-          const SizedBox(height: 24),
 
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: Text(
-                 _error!,
-                 style: const TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.w500),
-                 textAlign: TextAlign.center,
-              ),
-            ),
+          // const SizedBox(height: 24), // Removed inline error padding
 
           // Resend Timer
           Row(

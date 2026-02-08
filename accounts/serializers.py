@@ -1,15 +1,23 @@
+import re
 from rest_framework import serializers
 from .models import AppUser
-
 from django.contrib.auth import get_user_model
-from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
-
 from operators.models import OperatorProfile
 from operators.serializers import OperatorProfileSerializer
 
-
-
+def validate_indian_mobile(value):
+    if not value:
+        return value
+    # Normalize: take last 10 digits if longer
+    digits = "".join(ch for ch in value if ch.isdigit())
+    if len(digits) > 10:
+        digits = digits[-10:]
+    
+    pattern = r'^[6789]\d{9}$'
+    if not re.match(pattern, digits):
+        raise serializers.ValidationError("Invalid Indian mobile number. Must be 10 digits starting with 6-9.")
+    return digits
 
 class MeSerializer(serializers.ModelSerializer):
     client = serializers.SlugRelatedField(slug_field='uid', read_only=True)
@@ -26,6 +34,9 @@ class MeUpdateSerializer(serializers.ModelSerializer):
         model = AppUser
         fields = ["email", "first_name", "last_name", "middle_name", "mobile_primary"]
 
+    def validate_mobile_primary(self, value):
+        return validate_indian_mobile(value)
+
 User = get_user_model()
 
 
@@ -38,6 +49,9 @@ class RegisterOperatorSerializer(serializers.Serializer):
     first_name = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     last_name = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     mobile_primary = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+    def validate_mobile_primary(self, value):
+        return validate_indian_mobile(value)
 
     def validate_username(self, value: str) -> str:
         
@@ -91,6 +105,9 @@ class AdminCreateUserSerializer(serializers.Serializer):
     last_name = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     mobile_primary = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
+    def validate_mobile_primary(self, value):
+        return validate_indian_mobile(value)
+
     
     client_uid = serializers.UUIDField(required=False)
 
@@ -131,8 +148,14 @@ class AppUserSerializer(serializers.ModelSerializer):
         fields = ["uid", "username", "email", "first_name", "last_name", "full_name", "user_type", "status", "mobile_primary", "photo", "is_active", "created_at", "operator_profile"]
         read_only_fields = ["uid", "created_at", "username"] # Username shouldn't change typically
 
+    def validate_mobile_primary(self, value):
+        return validate_indian_mobile(value)
+
 class OperatorOtpRequestSerializer(serializers.Serializer):
     mobile = serializers.CharField(min_length=8, max_length=15)
+
+    def validate_mobile(self, value):
+        return validate_indian_mobile(value)
 
 class OperatorOtpVerifySerializer(serializers.Serializer):
     otp_session_uid = serializers.UUIDField()

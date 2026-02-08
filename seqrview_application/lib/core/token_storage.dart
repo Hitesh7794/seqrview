@@ -13,6 +13,7 @@ class TokenStorage {
   // ✅ NEW: persistent cooldown (Aadhaar OTP request)
   static const _aadhaarCooldownUntilKey = 'aadhaar_otp_cooldown_until';
   static const _themeKey = 'app_theme_is_dark';
+  static const _aadhaarDetailsKey = 'aadhaar_details_json';
 
   Future<void> saveTheme(bool isDark) => _storage.write(key: _themeKey, value: isDark.toString());
   
@@ -48,11 +49,16 @@ class TokenStorage {
 
   Future<void> clearAadhaarCooldownUntil() => _storage.delete(key: _aadhaarCooldownUntilKey);
 
+  Future<void> saveAadhaarDetails(String json) => _storage.write(key: _aadhaarDetailsKey, value: json);
+  Future<String?> getAadhaarDetails() => _storage.read(key: _aadhaarDetailsKey);
+  Future<void> clearAadhaarDetails() => _storage.delete(key: _aadhaarDetailsKey);
+
   Future<void> clearAll() async {
     await _storage.delete(key: _accessKey);
     await _storage.delete(key: _refreshKey);
     await _storage.delete(key: _mobileKey);
     await _storage.delete(key: _kycSessionKey);
-    await _storage.delete(key: _aadhaarCooldownUntilKey); // ✅ NEW
+    await _storage.delete(key: _aadhaarCooldownUntilKey);
+    await _storage.delete(key: _aadhaarDetailsKey);
   }
 }

@@ -1,0 +1,2 @@
+client_center_code,client_center_name,city,active_capacity,address,latitude,longitude,incharge_name,incharge_phone
+TEST-001,Browser Test Center,Mumbai,500,123 Test St,19.0760,72.8777,Test Incharge,9999999999

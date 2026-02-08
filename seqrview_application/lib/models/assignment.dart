@@ -51,13 +51,22 @@ class ShiftCenter {
 class Exam {
   final String name;
   final String code;
+  final bool isGeofencingEnabled;
+  final bool isSelfieEnabled;
 
-  Exam({required this.name, required this.code});
+  Exam({
+    required this.name, 
+    required this.code, 
+    this.isGeofencingEnabled = true,
+    this.isSelfieEnabled = true,
+  });
 
   factory Exam.fromJson(Map<String, dynamic> json) {
     return Exam(
       name: json['name'],
       code: json['exam_code'],
+      isGeofencingEnabled: json['is_geofencing_enabled'] ?? true, // Default to true for safety
+      isSelfieEnabled: json['is_selfie_enabled'] ?? true,
     );
   }
 }

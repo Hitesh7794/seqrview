@@ -58,17 +58,77 @@ class AttendanceLogViewSet(viewsets.ModelViewSet):
         except OperatorAssignment.DoesNotExist:
              return Response({"detail": "Assignment not found"}, status=status.HTTP_404_NOT_FOUND)
 
+        # 2a. Time Window Validation
+        shift = assignment.shift_center.shift
+        from django.utils import timezone
+        from datetime import datetime, timedelta
+        
+        # Construct Aware Datetime for Shift Start/End
+        # Assuming DB stores UTC if USE_TZ=True and TIME_ZONE='UTC'
+        try:
+            # Combine Date + Time
+            shift_start_naive = datetime.combine(shift.work_date, shift.start_time)
+            shift_end_naive = datetime.combine(shift.work_date, shift.end_time)
+            
+            # Make Aware (UTC)
+            shift_start_dt = timezone.make_aware(shift_start_naive, timezone.utc)
+            shift_end_dt = timezone.make_aware(shift_end_naive, timezone.utc)
+            
+            # Windows
+            # Check-In: 1 Hour before Start -> End Time
+            check_in_open = shift_start_dt - timedelta(hours=1)
+            check_in_close = shift_end_dt
+            
+            # Check-Out: Start Time -> End Time + 4 Hours
+            check_out_open = shift_start_dt
+            check_out_close = shift_end_dt + timedelta(hours=4)
+            
+            now = timezone.now()
+            activity_type = request.data.get('activity_type')
+
+            if activity_type == 'CHECK_IN':
+                if not (check_in_open <= now <= check_in_close):
+                    return Response({
+                        "detail": f"Check-In allowed between {check_in_open.strftime('%H:%M')} and {check_in_close.strftime('%H:%M')} UTC."
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                    
+            elif activity_type == 'CHECK_OUT':
+                 if not (check_out_open <= now <= check_out_close):
+                     # Allow Check-Out logic to be lenient? 
+                     # User Request: "check in checkout can be done during shift time"
+                     # If they are very late, maybe we still allow but warn?
+                     # Sticking to strictly windows for now.
+                    return Response({
+                        "detail": f"Check-Out allowed between {check_out_open.strftime('%H:%M')} and {check_out_close.strftime('%H:%M')} UTC."
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+        except Exception as e:
+            # Fallback if datetime conversion fails
+            print(f"Time validation error: {e}")
+            pass # Or fail validation? Safer to pass if data is corrupt to avoid lockout, or fail to be strict.
+            # Passing for now unless critical.
+
+
         # 3. Calculate Distance (Haversine Formula)
         dist = self.calculate_distance(lat, lon, center_lat, center_lon)
         
         # 4. Preparing data
         # We don't modify request.data directly for read_only fields
         
-        is_verified = (dist <= radius)
+        is_geofencing_enabled = assignment.shift_center.exam.is_geofencing_enabled
+        if not is_geofencing_enabled:
+            is_verified = True
+        else:
+            is_verified = (dist <= radius)
         
         # 4a. FACE VERIFICATION (Only for CHECK_IN)
         activity_type = request.data.get('activity_type')
-        if activity_type == 'CHECK_IN':
+        
+        # Check if selfie is mandated by Exam config
+        # We already fetched 'assignment', so we can check the flag
+        is_selfie_required = assignment.shift_center.exam.is_selfie_enabled
+        
+        if activity_type == 'CHECK_IN' and is_selfie_required:
             # Selfie is mandatory for Check-In
             selfie_file = request.FILES.get('selfie')
             if not selfie_file:

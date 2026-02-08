@@ -1,5 +1,5 @@
 <template>
-  <div class="bg-white text-gray-900 w-64 min-h-screen flex flex-col font-inter border-r border-gray-100">
+  <div class="bg-white text-gray-900 w-64 min-h-screen flex flex-col font-inter border-r border-gray-100 relative z-20">
     <!-- Logo Section -->
     <div class="h-20 flex items-center px-6 border-b border-gray-100">
       <div class="flex items-center gap-3">
@@ -32,7 +32,9 @@ import {
   UsersIcon, 
   BuildingOfficeIcon, 
   ClipboardDocumentCheckIcon,
-  ChartBarIcon 
+  ChartBarIcon,
+  BriefcaseIcon,
+  ClipboardDocumentListIcon
 } from '@heroicons/vue/24/outline';
 
 import { useAuthStore } from '../stores/auth';
@@ -42,9 +44,11 @@ const authStore = useAuthStore();
 
 const allNavItems = [
   { name: 'Dashboard', path: '/', icon: Squares2X2Icon, roles: ['INTERNAL_ADMIN', 'CLIENT_ADMIN'] },
-  { name: 'Exams', path: '/operations/exams', icon: ClipboardDocumentCheckIcon, roles: ['INTERNAL_ADMIN', 'CLIENT_ADMIN'] },
+  { name: 'Exams', path: '/operations/exams', icon: ChartBarIcon, roles: ['INTERNAL_ADMIN', 'CLIENT_ADMIN'] },
   { name: 'Operators', path: '/masters/operators', icon: ClipboardDocumentCheckIcon, roles: ['INTERNAL_ADMIN'] },
   { name: 'Clients', path: '/masters/clients', icon: UsersIcon, roles: ['INTERNAL_ADMIN'] },
+  { name: 'Roles', path: '/masters/roles', icon: BriefcaseIcon, roles: ['INTERNAL_ADMIN'] },
+  { name: 'Task Library', path: '/masters/task-library', icon: ClipboardDocumentListIcon, roles: ['INTERNAL_ADMIN'] },
 ];
 
 const navItems = computed(() => {

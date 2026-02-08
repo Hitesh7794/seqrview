@@ -48,21 +48,23 @@ class _FaceMatchPlaceholderScreenState extends State<FaceMatchPlaceholderScreen>
     if (mounted) setState(() {});
   }
   
-  Future<void> _capturePreviewSnapshot() async {
+  Future<Uint8List?> _capturePreviewSnapshot() async {
     try {
       final boundary = _previewKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-      if (boundary == null) return;
+      if (boundary == null) return null;
       
-      // Capture the current frame as an image
-      final image = await boundary.toImage(); 
+      // Capture the current frame as an image with higher pixel ratio for better quality
+      final image = await boundary.toImage(pixelRatio: 3.0); 
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       final pngBytes = byteData?.buffer.asUint8List();
       
       if (mounted && pngBytes != null) {
         setState(() => _frozenImage = pngBytes);
       }
+      return pngBytes;
     } catch (e) {
-      // Ignore screenshot errors (fallback to normal behavior)
+      debugPrint("Snapshot error: $e");
+      return null;
     }
   }
 
@@ -177,6 +179,9 @@ class _FaceMatchPlaceholderScreenState extends State<FaceMatchPlaceholderScreen>
         // 2. Size check (Fill roughly 20-30% of width)
         final faceWidth = bbox.width;
         
+        // 3. Tilt Check (Horizontal rotation/tilt)
+        final tilt = face.headEulerAngleZ; // rotation around Z axis
+        
         // Thresholds (tunable)
         final relativeDistX = diffX / imgSize.width;
         final relativeDistY = diffY / imgSize.height; // Vertical deviation
@@ -186,6 +191,8 @@ class _FaceMatchPlaceholderScreenState extends State<FaceMatchPlaceholderScreen>
         if (imgSize.width < 100) {
            validFace = true;
            statusMsg = "Face Detected";
+        } else if (tilt != null && tilt.abs() > 20) {
+          statusMsg = "Hold Phone Upright";
         } else if (relativeSize < 0.20) {
           statusMsg = "Move Closer";
         } else if (relativeDistX > 0.35 || relativeDistY > 0.45) { // Relaxed: 35% X, 45% Y deviation
@@ -213,13 +220,58 @@ class _FaceMatchPlaceholderScreenState extends State<FaceMatchPlaceholderScreen>
     }
   }
 
+  // --- Error Dialog Helper ---
+  void _showErrorDialog({
+      required String title,
+      required String message,
+      required IconData icon,
+      required Color color,
+      bool isSessionExpired = false,
+  }) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(icon, color: color, size: 28),
+            const SizedBox(width: 12),
+            Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold))),
+          ],
+        ),
+        content: Text(message, style: const TextStyle(fontSize: 16)),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              if (isSessionExpired) {
+                widget.session.setStage(OnboardingStage.chooseKycMethod);
+              }
+            },
+            child: Text(
+              isSessionExpired ? "Restart KYC" : "Try Again",
+              style: TextStyle(color: color, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // --- Capture & Verify Logic ---
   Future<void> _captureAndVerify() async {
     if (_controller == null || !_controller!.value.isInitialized) return;
     if (_loading) return;
 
-    // 1. VISUAL FREEZE: Capture the current preview frame immediately
-    await _capturePreviewSnapshot(); 
+    // 1. VISUAL FREEZE: Capture the current preview frame immediately as a SNAPSHOT
+    // This ensures what the user sees is what we send.
+    final snapshotBytes = await _capturePreviewSnapshot();
+    
+    if (snapshotBytes == null) {
+      if (mounted) setState(() => _error = "Failed to capture image. Please try again.");
+      return;
+    }
 
     setState(() {
       _loading = true;
@@ -230,10 +282,11 @@ class _FaceMatchPlaceholderScreenState extends State<FaceMatchPlaceholderScreen>
       // 2. Pause stream to prevent new detections
       await _controller?.stopImageStream();
       
-      // 3. Capture High-Res (Background)
-      // Note: We don't need pausePreview() anymore because we are showing the screenshot overlay.
-      // This prevents the "stuck" camera issue on some devices.
-      final imageFile = await _controller!.takePicture();
+      // 3. Write Snapshot to Temp File
+      // We use the snapshot bytes instead of taking a new picture
+      final tempDir = Directory.systemTemp;
+      final tempFile = File('${tempDir.path}/selfie_${DateTime.now().millisecondsSinceEpoch}.png');
+      await tempFile.writeAsBytes(snapshotBytes);
       
       final kycUid = widget.session.kycSessionUid;
       if (kycUid == null) throw "KYC Session missing";
@@ -243,7 +296,7 @@ class _FaceMatchPlaceholderScreenState extends State<FaceMatchPlaceholderScreen>
         '/api/kyc/face/liveness/',
         data: FormData.fromMap({
           "kyc_session_uid": kycUid,
-          "selfie": await MultipartFile.fromFile(imageFile.path, filename: "selfie.jpg"),
+          "selfie": await MultipartFile.fromFile(tempFile.path, filename: "selfie.png"),
         }),
         options: Options(receiveTimeout: const Duration(seconds: 30)),
       );
@@ -255,7 +308,7 @@ class _FaceMatchPlaceholderScreenState extends State<FaceMatchPlaceholderScreen>
         '/api/kyc/face/match/',
         data: FormData.fromMap({
           "kyc_session_uid": kycUid,
-          "selfie": await MultipartFile.fromFile(imageFile.path, filename: "selfie.jpg"),
+          "selfie": await MultipartFile.fromFile(tempFile.path, filename: "selfie.png"),
         }),
         options: Options(receiveTimeout: const Duration(seconds: 30)),
       );
@@ -266,28 +319,72 @@ class _FaceMatchPlaceholderScreenState extends State<FaceMatchPlaceholderScreen>
     } catch (e) {
       // Error handling
       String msg = e.toString();
-      if (e is DioException) {
-         msg = e.response?.data?['detail']?.toString() 
-             ?? e.response?.data?['message']?.toString() 
-             ?? "API Error ${e.response?.statusCode}";
-      }
-      if (mounted) {
-         // Check for session expiry to redirect user
-         if (msg.toLowerCase().contains("session expired") || 
-             msg.toLowerCase().contains("invalid session") ||
-             (e is DioException && e.response?.statusCode == 404)) {
-            
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Session expired. Please restart verification.")),
-            );
-            widget.session.setStage(OnboardingStage.chooseKycMethod);
-            return;
-         }
+      String title = "System Error";
+      IconData icon = Icons.error_outline;
+      Color color = Colors.red;
+      bool isSessionExpired = false;
 
+      if (e is DioException) {
+         final statusCode = e.response?.statusCode;
+         final data = e.response?.data;
+         
+         msg = data?['detail']?.toString() 
+             ?? data?['message']?.toString() 
+             ?? "API Error $statusCode";
+
+         if (statusCode == 502 || statusCode == 503 || statusCode == 504) {
+            title = "Verification Provider Error";
+            msg = "The verification service is temporarily busy or unreachable. Please try again in a moment.";
+            icon = Icons.cloud_off_rounded;
+            color = Colors.orange;
+
+         } else if (statusCode == 400 || statusCode == 422) {
+            title = "Verification Failed";
+            
+            // Check for Max Attempts (which returns 400 from backend)
+            if (msg.contains("Maximum face match attempts reached")) {
+                title = "Verification Failed";
+                icon = Icons.gpp_bad_rounded;
+                color = Colors.red;
+                isSessionExpired = true;
+            } else {
+                // Clean up raw Surepass errors
+                if (msg.contains("Surepass") && msg.contains("422")) {
+                   msg = "Face verification failed. Please try again with better lighting.";
+                }
+                icon = Icons.face_retouching_off_rounded;
+                color = Colors.orange;
+            }
+         } else if (msg.toLowerCase().contains("session expired") || 
+                    msg.toLowerCase().contains("invalid session") ||
+                    statusCode == 404) {
+            title = "Session Expired";
+            msg = "Your KYC session has expired for security reasons. Please restart the process.";
+            icon = Icons.timer_off_rounded;
+            isSessionExpired = true;
+         } else if (statusCode == 429) {
+            title = "Verification Failed";
+            msg = "Maximum face match attempts reached. For security, this session has been cleared. Please restart verification.";
+            icon = Icons.gpp_bad_rounded;
+            color = Colors.red;
+            isSessionExpired = true; 
+         }
+      }
+
+      if (mounted) {
          setState(() {
            _error = msg;
            _frozenImage = null; // Unfreeze UI on error
          });
+
+         // Show the new user-friendly dialog
+         _showErrorDialog(
+           title: title,
+           message: msg,
+           icon: icon,
+           color: color,
+           isSessionExpired: isSessionExpired,
+         );
          
          // Resume stream to try again
          try {

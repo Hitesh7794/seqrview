@@ -1,10 +1,14 @@
 <template>
   <div>
-    <div class="flex justify-between items-center mb-6">
-      <h1 class="text-2xl font-bold text-gray-800">Exams</h1>
-      <button v-if="canManageExams" @click="openCreateModal" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
-        + Create Exam
-      </button>
+    <div class="flex justify-between items-center mb-4 px-1">
+      <!-- <h1 class="text-2xl font-bold text-gray-800">Exams</h1> -->
+      <div class="flex-1"></div> <!-- Spacer if no title -->
+      <div class="flex gap-3">
+        <ExportButton endpoint="/operations/exams/export/" filename="exams.csv" />
+        <button v-if="canManageExams" @click="openCreateModal" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 text-sm font-medium shadow-sm transition-colors">
+          + Create Exam
+        </button>
+      </div>
     </div>
 
     <div class="bg-white rounded-lg shadow overflow-hidden">
@@ -21,8 +25,8 @@
         </thead>
         <tbody class="bg-white divide-y divide-gray-200">
           <tr v-for="exam in exams" :key="exam.uid">
-            <td class="px-6 py-4 whitespace-nowrap">
-              <div class="text-sm font-medium text-gray-900">{{ exam.name }}</div>
+            <td class="px-6 py-4 whitespace-nowrap cursor-pointer group" @click="$router.push(`/operations/exams/${exam.uid}/shifts`)">
+              <div class="text-sm font-medium text-gray-900 group-hover:text-indigo-600 transition-colors">{{ exam.name }}</div>
               <div class="text-xs text-gray-500">{{ exam.exam_code }}</div>
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ exam.client_name }}</td>
@@ -37,7 +41,25 @@
                 </div>
             </td>
             <td class="px-6 py-4 whitespace-nowrap">
-              <span class="px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full border"
+              <div v-if="canManageExams">
+                <select
+                    @change="updateStatus(exam, $event)"
+                    class="block w-full text-xs font-semibold rounded-full border px-2 py-1 outline-none cursor-pointer appearance-none text-center"
+                    :class="{
+                        'bg-green-100 text-green-700 border-green-200': exam.status === 'LIVE',
+                        'bg-blue-100 text-blue-700 border-blue-200': exam.status === 'READY',
+                        'bg-orange-100 text-orange-700 border-orange-200': exam.status === 'CONFIGURING',
+                        'bg-gray-100 text-gray-600 border-gray-200': ['DRAFT', 'COMPLETED', 'ARCHIVED', 'CANCELLED'].includes(exam.status)
+                    }"
+                    :value="exam.status"
+                    @click.stop
+                >
+                    <option v-for="opt in statusOptions" :key="opt" :value="opt">
+                        {{ formatStatus(opt) }}
+                    </option>
+                </select>
+              </div>
+              <span v-else class="px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full border"
                 :class="{
                    'bg-green-100 text-green-700 border-green-200': exam.status === 'LIVE',
                    'bg-blue-100 text-blue-700 border-blue-200': exam.status === 'READY',
@@ -54,11 +76,11 @@
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                     </svg>
                  </button>
-                 <button @click="$router.push(`/operations/exams/${exam.exam_code}/shifts`)" class="text-gray-500 hover:text-blue-600 transition-colors" title="Manage Shifts">
+                 <!-- <button @click="$router.push(`/operations/exams/${exam.exam_code}/shifts`)" class="text-gray-500 hover:text-blue-600 transition-colors" title="Manage Shifts">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
-                 </button>
+                 </button> -->
                  <button @click="deleteExam(exam.uid)" class="text-red-600 hover:text-red-900 transition-colors" title="Delete">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -86,6 +108,7 @@ import { ref, onMounted, computed } from 'vue';
 import api from '../../api/axios';
 import { useAuthStore } from '../../stores/auth';
 import CreateExamModal from './CreateExamModal.vue';
+import ExportButton from '../../components/ExportButton.vue';
 
 const exams = ref([]);
 const isCreateModalOpen = ref(false);
@@ -142,6 +165,27 @@ const loadExams = async () => {
     }
 };
 
+
+const statusOptions = [
+    'DRAFT', 'CONFIGURING', 'READY', 'LIVE', 'COMPLETED', 'CANCELLED', 'ARCHIVED'
+];
+
+const updateStatus = async (exam, event) => {
+    const newStatus = event.target.value;
+    const oldStatus = exam.status;
+    
+    // Immediate UI feedback
+    exam.status = newStatus;
+
+    try {
+        await api.patch(`/operations/exams/${exam.uid}/`, { status: newStatus });
+    } catch (e) {
+        console.error("Failed to update status", e);
+        alert("Failed to update status.");
+        exam.status = oldStatus; // Revert on failure
+        event.target.value = oldStatus;
+    }
+};
 
 const formatStatus = (status) => {
     return status ? status.toLowerCase().replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) : '';

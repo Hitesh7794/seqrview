@@ -407,11 +407,12 @@ class AadhaarKycSubmitOtpView(APIView):
         session.vendor_reference_id = data.get("reference_id")
         session.vendor_uniqueness_id = data.get("uniqueness_id")
         session.id_card_image_b64 = img_b64
+        session.ekyc_address_data = data.get("address")
         session.status = "OTP_VERIFIED"
         session.save(update_fields=[
             "ekyc_full_name", "ekyc_gender", "ekyc_dob",
             "vendor_reference_id", "vendor_uniqueness_id", "id_card_image_b64",
-            "status", "updated_at"
+            "ekyc_address_data", "status", "updated_at"
         ])
 
         profile: OperatorProfile = request.user.operator_profile
@@ -427,6 +428,8 @@ class AadhaarKycSubmitOtpView(APIView):
                 "full_name": ekyc_name,
                 "date_of_birth": str(ekyc_dob) if ekyc_dob else None,
                 "gender": ekyc_gender,
+                "address_data": data.get("address") or {},
+                "address_raw": data.get("address_raw") or "",
             }
         })
 
@@ -631,7 +634,8 @@ class DLKycStartView(APIView):
         # Success => create session + update profile
         data = resp.get("data", {}) or {}
 
-        dl_name = data.get("name") or ""
+        # Robust data extraction (Surepass keys can vary between Aadhaar/DL)
+        dl_name = data.get("full_name") or data.get("name") or ""
         dl_gender = (data.get("gender") or "").strip()
         dl_dob_str = data.get("dob")
 
@@ -663,12 +667,13 @@ class DLKycStartView(APIView):
             vendor_reference_id=data.get("license_number"),
             vendor_uniqueness_id=data.get("client_id"),
             id_card_image_b64=img_b64,
+            ekyc_address_data=data.get("address"),
             expires_at=KycSession.default_expiry(),
         )
 
         profile.profile_status = "KYC_IN_PROGRESS"
         profile.verification_method = "DL"
-        profile.kyc_status = "OTP_VERIFIED"  # Reuse this status for DL (means details fetched)
+        profile.kyc_status = "DL_VERIFIED"  # Use DL_VERIFIED to match session_controller.dart
         profile.kyc_fail_reason = None
         profile.save(update_fields=[
             "profile_status", "verification_method", "kyc_status", "kyc_fail_reason", "updated_at"
@@ -679,6 +684,13 @@ class DLKycStartView(APIView):
             "expires_at": session.expires_at,
             "status": "DL_VERIFIED",
             "next": "VERIFY_DETAILS",
+            "aadhaar_details": {
+                "full_name": dl_name,
+                "date_of_birth": str(dl_dob) if dl_dob else None,
+                "gender": dl_gender,
+                "address_data": data.get("address") or {},
+                "address_raw": data.get("address_raw") or "",
+            }
         }, status=status.HTTP_200_OK)
 
 
@@ -846,8 +858,7 @@ class FaceLivenessView(APIView):
         elif session.status not in ["DETAILS_VERIFIED", "OTP_VERIFIED", "DL_VERIFIED"]:
             return Response({"detail": "Details not verified"}, status=status.HTTP_400_BAD_REQUEST)
 
-        if session.liveness_attempts >= 3:
-            return Response({"detail": "Liveness attempts exceeded"}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        # Liveness attempts check removed per user request
 
         selfie = request.FILES.get("selfie")
         if not selfie:
@@ -857,10 +868,29 @@ class FaceLivenessView(APIView):
         session.save(update_fields=["liveness_attempts", "updated_at"])
 
         client = SurepassClient()
-        try:
-            resp = client.face_liveness(selfie_bytes=selfie.read(), filename=selfie.name)
-        except SurepassError as e:
-            return Response({"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+        selfie_bytes = selfie.read()
+        
+        # Retry logic for Surepass fluctuation
+        resp = None
+        last_err = None
+        for attempt in range(2):
+            try:
+                resp = client.face_liveness(selfie_bytes=selfie_bytes, filename=selfie.name)
+                break
+            except SurepassError as e:
+                last_err = e
+                if "502" not in str(e) and "504" not in str(e):
+                    break # Not a transient error
+        
+        if not resp:
+            err_msg = str(last_err)
+            # If the error is NOT a timeout/gateway error from provider, it's likely a validation error (4xx)
+            # So we should return 400 to the app so it displays the message instead of "Service Busy"
+            status_code = status.HTTP_502_BAD_GATEWAY
+            if "502" not in err_msg and "504" not in err_msg:
+                 status_code = status.HTTP_400_BAD_REQUEST
+            
+            return Response({"detail": err_msg}, status=status_code)
 
         d = resp.get("data", {}) or {}
         live = bool(d.get("live", False))
@@ -930,10 +960,27 @@ class FaceMatchView(APIView):
             return Response({"detail": "Invalid ID image. Restart KYC."}, status=status.HTTP_400_BAD_REQUEST)
 
         client = SurepassClient()
-        try:
-            resp = client.face_match(selfie_bytes=selfie.read(), id_card_bytes=id_bytes, selfie_filename=selfie.name, id_filename="aadhaar.jpg")
-        except SurepassError as e:
-            return Response({"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+        selfie_bytes = selfie.read()
+        
+        # Retry logic for Surepass fluctuation
+        resp = None
+        last_err = None
+        for attempt in range(2):
+            try:
+                resp = client.face_match(selfie_bytes=selfie_bytes, id_card_bytes=id_bytes, selfie_filename=selfie.name, id_filename="aadhaar.jpg")
+                break
+            except SurepassError as e:
+                last_err = e
+                if "502" not in str(e) and "504" not in str(e):
+                    break # Not a transient error
+        
+        if not resp:
+            err_msg = str(last_err)
+            status_code = status.HTTP_502_BAD_GATEWAY
+            if "502" not in err_msg and "504" not in err_msg:
+                 status_code = status.HTTP_400_BAD_REQUEST
+            
+            return Response({"detail": err_msg}, status=status_code)
 
         d = resp.get("data", {}) or {}
         match_status = bool(d.get("match_status", False))
@@ -990,12 +1037,19 @@ class FaceMatchView(APIView):
             
             if session.face_attempts >= 3:
                 profile.kyc_status = "FAILED"
-                profile.kyc_fail_reason = "Face match failed"
+                profile.kyc_fail_reason = "Face match failed - Maximum attempts reached"
                 profile.save(update_fields=["kyc_status", "kyc_fail_reason", "updated_at"])
 
-                session.status = "FAILED"
+                session.status = "EXPIRED" # Clear/Expire session
                 session.save(update_fields=["status", "updated_at"])
-                return Response({"verified": False, "confidence": confidence, "detail": "Face match failed. Maximum attempts reached."}, status=status.HTTP_400_BAD_REQUEST)
+                session.clear_sensitive() # Wipe ID photo data
+                
+                return Response({
+                    "verified": False, 
+                    "confidence": confidence, 
+                    "detail": "Maximum face match attempts reached. Session cleared. Restart Application",
+                    "code": "KYC_FACE_LIMIT_EXCEEDED"
+                }, status=status.HTTP_400_BAD_REQUEST)
             else:
                 
                 profile.kyc_status = "FACE_PENDING"

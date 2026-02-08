@@ -10,6 +10,7 @@ import 'screens/home_screen.dart';
 
 import 'screens/auth/mobile_number_screen.dart';
 import 'screens/auth/otp_verify_screen.dart';
+import 'screens/auth/blocked_user_screen.dart';
 
 import 'screens/onboarding/profile_form_screen.dart';
 import 'screens/onboarding/kyc_method_select_screen.dart';
@@ -46,6 +47,7 @@ class _MyAppState extends State<MyApp> {
     splash: () => SplashScreen(session: widget.session),
     mobile: () => MobileNumberScreen(session: widget.session),
     otp: () => OtpVerifyScreen(session: widget.session),
+    blocked: () => BlockedUserScreen(session: widget.session),
 
     profile: () => ProfileFormScreen(session: widget.session),
     kycMethod: () => KycMethodSelectScreen(session: widget.session),

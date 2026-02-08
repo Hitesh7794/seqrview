@@ -80,6 +80,7 @@
                 </span>
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                <button @click="$router.push(`/masters/clients/${client.uid}/exams`)" class="text-blue-600 hover:text-blue-900 mr-3 font-bold">Exams</button>
                 <button @click="openModal(client)" class="text-indigo-600 hover:text-indigo-900 mr-3">Edit</button>
                 <button @click="deleteClient(client.uid)" class="text-red-600 hover:text-red-900">Delete</button>
               </td>
@@ -182,7 +183,7 @@ const filteredClients = computed(() => {
 
 const loadClients = async () => {
     try {
-        const res = await api.get('/clients/');
+        const res = await api.get('/masters/clients/');
         clients.value = res.data.results || res.data;
     } catch (e) {
         console.error("Failed to load clients", e);
@@ -222,10 +223,10 @@ const closeCredentialsModal = () => {
 const saveClient = async () => {
     try {
         if (isEditing.value) {
-            await api.patch(`/clients/${editingId.value}/`, form);
+            await api.patch(`/masters/clients/${editingId.value}/`, form);
             closeModal();
         } else {
-            const res = await api.post('/clients/', form);
+            const res = await api.post('/masters/clients/', form);
             closeModal();
             // Show credentials if returned
             if (res.data.generated_credentials) {
@@ -243,7 +244,7 @@ const saveClient = async () => {
 const deleteClient = async (uid) => {
     if (!confirm('Are you sure you want to delete this client?')) return;
     try {
-        await api.delete(`/clients/${uid}/`);
+        await api.delete(`/masters/clients/${uid}/`);
         await loadClients();
     } catch (e) {
         console.error("Failed to delete client", e);

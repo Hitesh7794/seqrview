@@ -228,7 +228,7 @@
             </div>
              <div>
                 <label class="block text-sm font-medium text-gray-700">Mobile</label>
-                <input v-model="form.mobile_primary" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm border p-2">
+                <input v-model="form.mobile_primary" type="text" maxlength="10" @input="form.mobile_primary = form.mobile_primary.replace(/\D/g, '')" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm border p-2">
             </div>
         </div>
 

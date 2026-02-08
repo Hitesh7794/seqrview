@@ -87,7 +87,7 @@ class AppUser(AbstractBaseUser, PermissionsMixin, TimeStampModel):
     # Optional link to an Exam entity if this user is an Exam Admin
     exam = models.ForeignKey('operations.Exam', on_delete=models.SET_NULL, null=True, blank=True, related_name='users')
 
-    mobile_primary = models.CharField(max_length=15, null=True, blank=True)
+    mobile_primary = models.CharField(max_length=10, null=True, blank=True)
     photo = models.ImageField(upload_to='user_photos/', null=True, blank=True)  # Store selfie after face match verification
 
     
@@ -104,6 +104,12 @@ class AppUser(AbstractBaseUser, PermissionsMixin, TimeStampModel):
 
     def save(self, *args, **kwargs):
         
+        # Sync is_active with status
+        if self.status in ["BLACKLIST", "INACTIVE", "REJECTED"]:
+            self.is_active = False
+        elif self.status == "ACTIVE":
+            self.is_active = True
+
         if not self.full_name:
             fn = (self.first_name or "").strip()
             mn = (self.middle_name or "").strip()
@@ -122,7 +128,7 @@ class OtpSession(models.Model):
     PURPOSES = (("OPERATOR_LOGIN", "Operator Login"),)
     purpose = models.CharField(max_length=30, choices=PURPOSES, default="OPERATOR_LOGIN")
 
-    mobile = models.CharField(max_length=15, db_index=True)
+    mobile = models.CharField(max_length=10, db_index=True)
     otp_hash = models.CharField(max_length=64)
     attempts = models.IntegerField(default=0)
 

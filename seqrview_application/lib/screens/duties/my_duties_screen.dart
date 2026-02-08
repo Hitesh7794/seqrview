@@ -1,14 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:dio/dio.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../app/session_controller.dart';
 import '../../models/assignment.dart';
+import '../../models/assignment.dart';
 import '../support/report_issue_screen.dart';
-import '../../widgets/support_floating_button.dart';
+import 'duty_detail_screen.dart';
 
 class MyDutiesScreen extends StatefulWidget {
   final SessionController session;
-  const MyDutiesScreen({super.key, required this.session});
+  final bool isActive;
+
+  const MyDutiesScreen({
+    super.key, 
+    required this.session,
+    this.isActive = false,
+  });
 
   @override
   State<MyDutiesScreen> createState() => _MyDutiesScreenState();
@@ -33,7 +41,24 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
     super.initState();
     widget.session.addListener(_update);
     _tabController = TabController(length: 2, vsync: this);
+    
+    // Refresh data when switching tabs (User Request)
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        _loadDuties();
+      }
+    });
+
     _loadDuties();
+  }
+
+  @override
+  void didUpdateWidget(MyDutiesScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Refresh when switching to this main tab
+    if (widget.isActive && !oldWidget.isActive) {
+      _loadDuties();
+    }
   }
 
   @override
@@ -63,8 +88,12 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
       }
     } catch (e) {
       if (mounted) {
+        if (e is DioException && (e.response?.statusCode == 401 || e.response?.statusCode == 403)) {
+           widget.session.logout();
+           return; 
+        }
         setState(() {
-          _error = e.toString();
+          _error = _prettyError(e);
         });
       }
     } finally {
@@ -74,6 +103,33 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
         });
       }
     }
+  }
+  
+  String _prettyError(Object e) {
+    if (e is DioException) {
+      if (e.type == DioExceptionType.connectionTimeout || 
+          e.type == DioExceptionType.connectionError) {
+        return "Please check your internet connection.";
+      }
+      if (e.response?.statusCode == 500) {
+        return "Server is currently unavailable.";
+      }
+      final data = e.response?.data;
+      String? msg;
+      if (data is Map) {
+         msg = data['detail']?.toString() ?? data['message']?.toString();
+      }
+      if (msg != null && msg.isNotEmpty) {
+          // Sanitize
+          final lower = msg.toLowerCase();
+          if (lower.contains("surepass") || 
+              lower.contains("authkey")) {
+            return "Service unavailable.";
+          }
+          return msg;
+      }
+    }
+    return "Something went wrong. Please try again.";
   }
 
   // --- Logic Helpers ---
@@ -106,7 +162,7 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
+        SnackBar(content: Text(_prettyError(e)), backgroundColor: Colors.red),
       );
     }
   }
@@ -114,6 +170,7 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
   Future<void> _handleLocationAction(Assignment assignment, bool isCheckIn) async {
     final examCenter = assignment.shiftCenter.center;
     final masterCenter = examCenter.masterCenter;
+    final exam = assignment.shiftCenter.exam;
 
     double? targetLat;
     double? targetLong;
@@ -147,7 +204,7 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
       if (permission == LocationPermission.deniedForever) throw "Location permissions are permanently denied.";
 
       String? selfiePath;
-      if (isCheckIn) {
+      if (isCheckIn && exam.isSelfieEnabled) {
         final ImagePicker picker = ImagePicker();
         final XFile? photo = await picker.pickImage(
           source: ImageSource.camera,
@@ -160,14 +217,15 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
 
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.medium,
-        timeLimit: const Duration(seconds: 10),
+        timeLimit: const Duration(seconds: 30),
       );
 
       final dist = Geolocator.distanceBetween(
         position.latitude, position.longitude, targetLat, targetLong
       );
 
-      if (dist > radius) {
+      // Only check geofence if enabled for this exam
+      if (exam.isGeofencingEnabled && dist > radius) {
         if (!mounted) return;
         showDialog(
           context: context, 
@@ -219,7 +277,8 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
         );
       }
 
-      try {
+
+    try {
         if (isCheckIn) {
           await widget.session.api.checkIn(assignment.uid, position.latitude, position.longitude, selfiePath);
         } else {
@@ -242,7 +301,7 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Action Failed: $e"), backgroundColor: Colors.red),
+            SnackBar(content: Text(_prettyError(e)), backgroundColor: Colors.red),
           );
         }
       }
@@ -250,7 +309,7 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Action Failed: $e"), backgroundColor: Colors.red),
+          SnackBar(content: Text(_prettyError(e)), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -267,8 +326,6 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
 
     return Scaffold(
       backgroundColor: bg,
-      floatingActionButton: const SupportFloatingButton(),
-      floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
       appBar: AppBar(
         elevation: 0,
         backgroundColor: bg,
@@ -314,15 +371,40 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
   Widget _buildDutyList(List<Assignment> list, String emptyMsg) {
     if (_error != null && list.isEmpty) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text("Error: $_error", style: const TextStyle(color: Colors.red)),
-            const SizedBox(height: 16),
-            ElevatedButton(onPressed: _loadDuties, child: const Text("Retry"))
-          ],
-        ),
-      );
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.cloud_off, size: 48, color: Colors.grey[400]),
+                const SizedBox(height: 16),
+                Text(
+                  "Unavailable",
+                  style: TextStyle(
+                    fontSize: 20, 
+                    fontWeight: FontWeight.bold,
+                    color: _isDark ? Colors.white : Colors.blueGrey,
+                  )
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _error!, 
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey[500])
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  onPressed: _loadDuties,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text("Retry"),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
     }
 
     if (list.isEmpty) {
@@ -373,116 +455,161 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header: Status + Actions
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    status,
-                    style: TextStyle(
-                      color: statusColor,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => DutyDetailScreen(
+                  session: widget.session,
+                  assignment: assignment,
                 ),
-                IconButton(
-                  onPressed: () {}, // Optional menu
-                  icon: Icon(Icons.more_vert, size: 20, color: Colors.grey[600]),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-              ],
-            ),
-          ),
-
-          // Title
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(
-              exam.name,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white : Colors.black87,
               ),
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Details Row: Date / Time
-          _buildDetailRow(
-            Icons.calendar_today_outlined,
-            "${shift.startTime.substring(0, 5)} | ${shift.endTime.substring(0, 5)}", // Simplified for now
-          ),
-          
-          // Details Row: Venue
-          _buildDetailRow(
-            Icons.location_on_outlined,
-            "${center.clientCenterName}, ${center.masterCenter?.city ?? ''}",
-          ),
-
-          const SizedBox(height: 16),
-
-          // Footer Action
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: Column(
-              children: [
-                if (isPending)
-                  _buildPrimaryButton("CONFIRM DUTY", () => _confirmAssignment(assignment)),
-                
-                if (status == 'CONFIRMED')
-                  _buildPrimaryButton("I HAVE REACHED (CHECK IN)", 
-                      () => _handleLocationAction(assignment, true), 
-                      color: Colors.green),
-
-                if (assignment.isCheckedIn) ...[
-                  _buildPrimaryButton("DUTY OVER (CHECK OUT)", 
-                      () => _handleLocationAction(assignment, false), 
-                      color: Colors.red),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () {
-                        Navigator.push(
-                          context, 
-                          MaterialPageRoute(builder: (_) => ReportIssueScreen(
-                            session: widget.session,
-                            assignment: assignment
-                          ))
-                        );
-                      },
-                      icon: const Icon(Icons.warning_amber_rounded, size: 18),
-                      label: const Text("Report Issue"),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.orange,
-                        side: const BorderSide(color: Colors.orange),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            );
+          },
+          borderRadius: BorderRadius.circular(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header: Status + Actions
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: statusColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        status,
+                        style: TextStyle(
+                          color: statusColor,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.5,
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                    IconButton(
+                      onPressed: () {}, // Optional menu
+                      icon: Icon(Icons.more_vert, size: 20, color: Colors.grey[600]),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
+              ),
 
-                if (!isActive && !isPending && !assignment.isCheckedIn)
-                  _buildPrimaryButton("VIEW HISTORY", () {}, outline: true),
-              ],
-            ),
+              // Title
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  exam.name,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Details Row: Date / Time
+              _buildDetailRow(
+                Icons.calendar_today_outlined,
+                "${shift.startTime.substring(0, 5)} | ${shift.endTime.substring(0, 5)}", // Simplified for now
+              ),
+              
+              // Details Row: Venue
+              _buildDetailRow(
+                Icons.location_on_outlined,
+                "${center.clientCenterName}, ${center.masterCenter?.city ?? ''}",
+              ),
+
+              const SizedBox(height: 16),
+
+              // Footer Action
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: Column(
+                  children: [
+                    if (isPending)
+                      _buildPrimaryButton("CONFIRM DUTY", () => _confirmAssignment(assignment)),
+                    
+                    if (status == 'CONFIRMED')
+                      _buildPrimaryButton("I HAVE REACHED (CHECK IN)", 
+                          () => _handleLocationAction(assignment, true), 
+                          color: Colors.green),
+
+                    if (assignment.isCheckedIn) ...[
+                      _buildPrimaryButton("DUTY OVER (CHECK OUT)", 
+                          () => _handleLocationAction(assignment, false), 
+                          color: Colors.red),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => DutyDetailScreen(
+                                      session: widget.session,
+                                      assignment: assignment,
+                                    ),
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.checklist, size: 18),
+                              label: const Text("View Tasks"),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: isDark ? Colors.white : Colors.black87,
+                                side: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey[300]!),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () {
+                                Navigator.push(
+                                  context, 
+                                  MaterialPageRoute(builder: (_) => ReportIssueScreen(
+                                    session: widget.session,
+                                    assignment: assignment
+                                  ))
+                                );
+                              },
+                              icon: const Icon(Icons.warning_amber_rounded, size: 18),
+                              label: const Text("Report Issue"),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.orange,
+                                side: const BorderSide(color: Colors.orange),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+
+                    if (!isActive && !isPending && !assignment.isCheckedIn)
+                      _buildPrimaryButton("VIEW HISTORY", () {}, outline: true),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

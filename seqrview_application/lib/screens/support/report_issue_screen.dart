@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../app/session_controller.dart';
@@ -55,10 +56,41 @@ class _ReportIssueScreenState extends State<ReportIssueScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error loading categories: $e")));
+      if (e is DioException && (e.response?.statusCode == 401 || e.response?.statusCode == 403)) {
+         widget.session.logout();
+         return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_prettyError(e))));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  String _prettyError(Object e) {
+    if (e is DioException) {
+      if (e.type == DioExceptionType.connectionTimeout || 
+          e.type == DioExceptionType.connectionError) {
+        return "Please check your internet connection.";
+      }
+      if (e.response?.statusCode == 500) {
+        return "Server is currently unavailable.";
+      }
+      final data = e.response?.data;
+      String? msg;
+      if (data is Map) {
+         msg = data['detail']?.toString() ?? data['message']?.toString();
+      }
+      if (msg != null && msg.isNotEmpty) {
+          // Sanitize
+          final lower = msg.toLowerCase();
+          if (lower.contains("surepass") || 
+              lower.contains("authkey")) {
+            return "Service unavailable.";
+          }
+          return msg;
+      }
+    }
+    return "Something went wrong. Please try again.";
   }
 
   Future<void> _pickImage() async {
@@ -109,9 +141,15 @@ class _ReportIssueScreenState extends State<ReportIssueScreen> {
       Navigator.pop(context); // Close screen
       
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Submission failed: $e"), backgroundColor: Colors.red),
-      );
+      if (mounted) {
+        if (e is DioException && (e.response?.statusCode == 401 || e.response?.statusCode == 403)) {
+           widget.session.logout();
+           return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_prettyError(e)), backgroundColor: Colors.red),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

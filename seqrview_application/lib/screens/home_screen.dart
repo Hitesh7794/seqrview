@@ -1,18 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../app/session_controller.dart';
-import '../models/assignment.dart';
+import '../models/assignment.dart'; // Restored
+import '../widgets/global_support_button.dart';
 import 'duties/my_duties_screen.dart';
 import '../core/config.dart';
-import '../../widgets/support_floating_button.dart';
 
 
 
 class HomeScreen extends StatefulWidget {
   final SessionController session;
   final Function(int)? onNavigateToTab;
+  final bool isActive;
 
-  const HomeScreen({super.key, required this.session, this.onNavigateToTab});
+  const HomeScreen({
+    super.key, 
+    required this.session, 
+    this.onNavigateToTab,
+    this.isActive = false,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -31,6 +37,15 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     widget.session.addListener(_update);
     _loadData();
+  }
+
+  @override
+  void didUpdateWidget(HomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // If tab just became active, refresh data
+    if (widget.isActive && !oldWidget.isActive) {
+      _loadData();
+    }
   }
 
   @override
@@ -114,10 +129,25 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       if (mounted) {
+        if (e is DioException && (e.response?.statusCode == 401 || e.response?.statusCode == 403)) {
+           // Session Expired - Redirect to Login
+           widget.session.logout(); // Clears tokens
+           // Use GoRouter to force navigation back to start
+           // We assume the router listens to session, but explicit nav is safer here if not reactive
+           return; 
+        }
+
+        String msg = "Failed to load data. Please try again.";
+        if (e is DioException) {
+           if (e.type == DioExceptionType.connectionTimeout || e.type == DioExceptionType.connectionError) {
+             msg = "Please check your internet connection.";
+           } else if (e.response?.statusCode == 500) {
+             msg = "Server is currently unavailable.";
+           }
+        }
+
         setState(() {
-          _error = e is DioException
-              ? (e.response?.data?['detail']?.toString() ?? "Failed to load data")
-              : "Failed to load data: $e";
+          _error = msg;
           _loading = false;
         });
       }
@@ -160,6 +190,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+
   @override
   Widget build(BuildContext context) {
     
@@ -181,12 +212,41 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       backgroundColor: bgColor,
-      floatingActionButton: const SupportFloatingButton(),
-      floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(child: Text(_error!, style: const TextStyle(color: Colors.red)))
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.cloud_off, size: 48, color: subTextColor),
+                        const SizedBox(height: 16),
+                        Text(
+                          "Oops!", 
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: textColor)
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _error!, 
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: subTextColor)
+                        ),
+                        const SizedBox(height: 24),
+                        ElevatedButton.icon(
+                          onPressed: _loadData,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text("Retry"),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF6366F1),
+                            foregroundColor: Colors.white,
+                          ),
+                        )
+                      ],
+                    ),
+                  ),
+                )
               : Stack(
                   children: [
                     // -- 1. Background Header --
@@ -220,27 +280,38 @@ class _HomeScreenState extends State<HomeScreen> {
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                   Image.asset(
-                                    'assets/images/logo.png',
-                                    height: 32, // Adjusted for AppBar
-                                  ),
-                                  Container(
-                                    decoration: BoxDecoration(
-                                      color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05),
-                                      shape: BoxShape.circle,
+                                    Image.asset(
+                                      'assets/images/logo.png',
+                                      height: 32, // Adjusted for AppBar
                                     ),
-                                    child: IconButton(
-                                      onPressed: () {
-                                        // TODO: Open Notifications
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(content: Text("Notifications coming soon!")),
-                                        );
-                                      },
-                                      icon: Icon(Icons.notifications_outlined, color: isDark ? Colors.white : const Color(0xFF111827)),
-                                      tooltip: 'Notifications',
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        GlobalSupportButton(isDark: _isDark),
+                                        const SizedBox(width: 8),
+                                        Container(
+                                          decoration: BoxDecoration(
+                                            color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: IconButton(
+                                            visualDensity: VisualDensity.compact,
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(),
+                                            style: IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                                            onPressed: () {
+                                              // TODO: Open Notifications
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(content: Text("Notifications coming soon!")),
+                                              );
+                                            },
+                                            icon: Icon(Icons.notifications_outlined, color: isDark ? Colors.white : const Color(0xFF111827)),
+                                            tooltip: 'Notifications',
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ),
-                                ],
+                                  ],
                               ),
                             ),
                             
@@ -390,15 +461,15 @@ class _HomeScreenState extends State<HomeScreen> {
                                       ),
                                       child: Icon(Icons.calendar_today, size: 32, color: subTextColor),
                                     ),
-                                    const SizedBox(height: 16),
-                                    Text(
-                                      "Rest & Recharge",
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                        color: textColor,
-                                      ),
-                                    ),
+                                    // const SizedBox(height: 16),
+                                    // Text(
+                                    //   "Rest & Recharge",
+                                    //   style: TextStyle(
+                                    //     fontWeight: FontWeight.bold,
+                                    //     fontSize: 16,
+                                    //     color: textColor,
+                                    //   ),
+                                    // ),
                                     const SizedBox(height: 6),
                                     Text(
                                       "No upcoming duties assigned\nto you at this moment.",

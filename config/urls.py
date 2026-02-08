@@ -25,7 +25,7 @@ urlpatterns = [
     path("api/kyc/", include("kyc.urls")),
 
 
-    path("api/",include("masters.urls")),
+    path("api/masters/",include("masters.urls")),
     path("api/operations/", include("operations.urls")),
     path("api/assignments/", include("assignments.urls")),
 

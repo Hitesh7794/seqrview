@@ -38,6 +38,7 @@ class KycSession(TimeStampedUUIDModel):
     ekyc_full_name = models.CharField(max_length=255, null=True, blank=True)
     ekyc_dob = models.DateField(null=True, blank=True)
     ekyc_gender = models.CharField(max_length=10, null=True, blank=True)
+    ekyc_address_data = models.JSONField(null=True, blank=True)
 
     name_match_score = models.FloatField(null=True, blank=True)
     name_match = models.BooleanField(null=True, blank=True)

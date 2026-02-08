@@ -7,6 +7,8 @@ const splashPath = '/splash';
 const mobilePath = '/auth/mobile';
 const otpPath = '/auth/otp';
 
+const blockedPath = '/auth/blocked';
+
 const profilePath = '/onboarding/profile';
 const kycMethodPath = '/onboarding/kyc-method';
 
@@ -28,6 +30,8 @@ String _target(OnboardingStage s) {
       return splashPath;
     case OnboardingStage.unauthenticated:
       return mobilePath;
+    case OnboardingStage.blocked:
+      return blockedPath;
 
     case OnboardingStage.draftProfile:
       return profilePath;
@@ -60,6 +64,7 @@ GoRouter buildRouter({
   required Widget Function() splash,
   required Widget Function() mobile,
   required Widget Function() otp,
+  required Widget Function() blocked,
   required Widget Function() profile,
   required Widget Function() kycMethod,
   required Widget Function() aadhaarNumber,
@@ -70,43 +75,44 @@ GoRouter buildRouter({
   required Widget Function() faceMatch,
   required Widget Function() failed,
   required Widget Function() rejected,
-    required Widget Function() home,
-  }) {
-    return GoRouter(
-      initialLocation: splashPath,
-      refreshListenable: session,
-      redirect: (context, state) {
-        // While loading => stay on splash
-        if (session.stage == OnboardingStage.loading) {
-          return state.matchedLocation == splashPath ? null : splashPath;
-        }
+  required Widget Function() home,
+}) {
+  return GoRouter(
+    initialLocation: splashPath,
+    refreshListenable: session,
+    redirect: (context, state) {
+      // While loading => stay on splash
+      if (session.stage == OnboardingStage.loading) {
+        return state.matchedLocation == splashPath ? null : splashPath;
+      }
 
-        // Allow OTP screen if user just requested OTP (unauthenticated stage)
-        if (state.matchedLocation == otpPath && session.stage == OnboardingStage.unauthenticated) {
-          return null;
-        }
+      // Allow OTP screen if user just requested OTP (unauthenticated stage)
+      if (state.matchedLocation == otpPath && session.stage == OnboardingStage.unauthenticated) {
+        return null;
+      }
 
-        final target = _target(session.stage);
-        if (state.matchedLocation == target) return null;
-        return target;
-      },
-      routes: [
-        GoRoute(path: splashPath, builder: (_, __) => splash()),
-        GoRoute(path: mobilePath, builder: (_, __) => mobile()),
-        GoRoute(path: otpPath, builder: (_, __) => otp()),
+      final target = _target(session.stage);
+      if (state.matchedLocation == target) return null;
+      return target;
+    },
+    routes: [
+      GoRoute(path: splashPath, builder: (_, __) => splash()),
+      GoRoute(path: mobilePath, builder: (_, __) => mobile()),
+      GoRoute(path: otpPath, builder: (_, __) => otp()),
+      GoRoute(path: blockedPath, builder: (_, __) => blocked()),
 
-        GoRoute(path: profilePath, builder: (_, __) => profile()),
-        GoRoute(path: kycMethodPath, builder: (_, __) => kycMethod()),
-        GoRoute(path: aadhaarNumberPath, builder: (_, __) => aadhaarNumber()),
-        GoRoute(path: aadhaarOtpPath, builder: (_, __) => aadhaarOtp()),
-        GoRoute(path: dlNumberPath, builder: (_, __) => dlNumber()),
-        GoRoute(path: verifyDetailsPath, builder: (_, __) => verifyDetails()),
-        GoRoute(path: livenessPath, builder: (_, __) => liveness()),
-        GoRoute(path: faceMatchPath, builder: (_, __) => faceMatch()),
+      GoRoute(path: profilePath, builder: (_, __) => profile()),
+      GoRoute(path: kycMethodPath, builder: (_, __) => kycMethod()),
+      GoRoute(path: aadhaarNumberPath, builder: (_, __) => aadhaarNumber()),
+      GoRoute(path: aadhaarOtpPath, builder: (_, __) => aadhaarOtp()),
+      GoRoute(path: dlNumberPath, builder: (_, __) => dlNumber()),
+      GoRoute(path: verifyDetailsPath, builder: (_, __) => verifyDetails()),
+      GoRoute(path: livenessPath, builder: (_, __) => liveness()),
+      GoRoute(path: faceMatchPath, builder: (_, __) => faceMatch()),
 
-        GoRoute(path: failedPath, builder: (_, __) => failed()),
-        GoRoute(path: rejectedPath, builder: (_, __) => rejected()),
-        GoRoute(path: homePath, builder: (_, __) => home()),
-      ],
-    );
-  }
+      GoRoute(path: failedPath, builder: (_, __) => failed()),
+      GoRoute(path: rejectedPath, builder: (_, __) => rejected()),
+      GoRoute(path: homePath, builder: (_, __) => home()),
+    ],
+  );
+}

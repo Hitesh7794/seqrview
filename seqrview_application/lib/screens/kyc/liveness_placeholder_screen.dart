@@ -17,6 +17,69 @@ class _LivenessPlaceholderScreenState extends State<LivenessPlaceholderScreen> {
   String? _error;
   int? _cooldown; // if backend returns retry_after_seconds
 
+  String _prettyError(Object e) {
+    if (e is DioException) {
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.sendTimeout) {
+        return "The service is taking too long to respond. Please check your internet or try again later.";
+      }
+      if (e.type == DioExceptionType.connectionError) {
+        return "Cannot connect to our servers. Please check your internet connection.";
+      }
+
+      final data = e.response?.data;
+      if (data is Map && data['detail'] != null) return data['detail'].toString();
+      if (data is Map && data['message'] != null) return data['message'].toString();
+      if (data is Map && data['reason'] != null) return data['reason'].toString();
+
+      return "Network/API error (${e.response?.statusCode ?? 'no status'})";
+    }
+    return "An unexpected error occurred. Please try again.";
+  }
+
+  void _showErrorPopup(String message, {String title = "Connection Issue", IconData icon = Icons.signal_wifi_off_rounded}) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
+        backgroundColor: widget.session.isDark ? const Color(0xFF161A22) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(icon, color: Colors.orangeAccent, size: 28),
+            const SizedBox(width: 12),
+            Text(
+              title,
+              style: TextStyle(
+                color: widget.session.isDark ? Colors.white : const Color(0xFF1F2937),
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          message,
+          style: TextStyle(
+            color: widget.session.isDark ? const Color(0xFF8B949E) : const Color(0xFF4B5563),
+            fontSize: 14,
+            height: 1.5,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(
+              "OK",
+              style: TextStyle(color: Color(0xFF3B3B7A), fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _captureAndSubmit() async {
     final kycUid = widget.session.kycSessionUid;
     if (kycUid == null || kycUid.isEmpty) {
@@ -55,22 +118,16 @@ class _LivenessPlaceholderScreenState extends State<LivenessPlaceholderScreen> {
 
       await widget.session.bootstrap(); // will redirect to face match
     } catch (e) {
-      String msg = "Something went wrong";
-      if (e is DioException) {
-        final data = e.response?.data;
-        if (data is Map && data['detail'] != null) {
-          msg = data['detail'].toString();
-        } else {
-          msg = "Network/API error (${e.response?.statusCode ?? 'no status'})";
-        }
-        if (data is Map && data['retry_after_seconds'] != null) {
-          final v = data['retry_after_seconds'];
-          _cooldown = v is int ? v : int.tryParse(v.toString());
-        }
-      } else {
-        msg = e.toString();
-      }
+      final msg = _prettyError(e);
       setState(() => _error = msg);
+      if (e is DioException && (
+          e.type == DioExceptionType.connectionError || 
+          e.type == DioExceptionType.connectionTimeout)) {
+        _showErrorPopup(msg);
+      } else if (e is DioException && e.response?.data is Map && e.response?.data['retry_after_seconds'] != null) {
+        final v = e.response?.data['retry_after_seconds'];
+        _cooldown = v is int ? v : int.tryParse(v.toString());
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }

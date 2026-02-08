@@ -8,6 +8,8 @@ import '../../app/session_controller.dart';
 import '../../app/router.dart';
 import 'otp_verify_screen.dart'; // Helper widget
 
+import '../../widgets/global_support_button.dart';
+
 class MobileNumberScreen extends StatefulWidget {
   final SessionController session;
   const MobileNumberScreen({super.key, required this.session});
@@ -27,7 +29,12 @@ class _MobileNumberScreenState extends State<MobileNumberScreen> {
   @override
   void initState() {
     super.initState();
+    super.initState();
     widget.session.addListener(_update);
+    // Listen to controller changes to update the custom placeholder
+    _controller.addListener(() {
+      if (mounted) setState(() {});
+    });
   }
 
   void _update() {
@@ -41,11 +48,81 @@ class _MobileNumberScreenState extends State<MobileNumberScreen> {
 
   String _prettyError(Object e) {
     if (e is DioException) {
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.sendTimeout) {
+        return "The service is taking too long to respond. Please check your internet or try again later.";
+      }
+      if (e.type == DioExceptionType.connectionError) {
+        return "Cannot connect to our servers. Please check your internet connection.";
+      }
+
       final data = e.response?.data;
-      if (data is Map && data['detail'] != null) return data['detail'].toString();
-      return "Network/API error (${e.response?.statusCode ?? 'no status'})";
+      String? msg;
+      if (data is Map) {
+         msg = data['detail']?.toString() ?? data['message']?.toString();
+      }
+
+      if (msg != null && msg.isNotEmpty) {
+        // Sanitize internal terms
+        final lower = msg.toLowerCase();
+        if (lower.contains("surepass") || 
+            lower.contains("authkey") || 
+            lower.contains("credit") || 
+            lower.contains("balance") || 
+            lower.contains("api key") || 
+            lower.contains("client_id") ||
+            lower.contains("unauthorized")) {
+           return "Service unavailable. Please try again later.";
+        }
+        return msg;
+      }
+
+      return "Network error (${e.response?.statusCode ?? 'unknown'}). Please try again.";
     }
-    return e.toString();
+    return "An unexpected error occurred. Please try again.";
+  }
+
+  void _showErrorPopup(String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
+        backgroundColor: _isDark ? const Color(0xFF161A22) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.signal_wifi_off_rounded, color: Colors.orangeAccent, size: 28),
+            const SizedBox(width: 12),
+            Text(
+              "Connection Issue",
+              style: TextStyle(
+                color: _isDark ? Colors.white : const Color(0xFF1F2937),
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          message,
+          style: TextStyle(
+            color: _isDark ? const Color(0xFF8B949E) : const Color(0xFF4B5563),
+            fontSize: 14,
+            height: 1.5,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(
+              "OK",
+              style: TextStyle(color: Color(0xFF3B3B7A), fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _sendOtp() async {
@@ -96,7 +173,13 @@ class _MobileNumberScreenState extends State<MobileNumberScreen> {
       });
 
     } catch (e) {
-      setState(() => _error = _prettyError(e));
+      final msg = _prettyError(e);
+      setState(() => _error = msg);
+      if (e is DioException && (
+          e.type == DioExceptionType.connectionError || 
+          e.type == DioExceptionType.connectionTimeout)) {
+        _showErrorPopup(msg);
+      }
     } finally {
       setState(() => _loading = false);
     }
@@ -146,7 +229,13 @@ class _MobileNumberScreenState extends State<MobileNumberScreen> {
                   height: 40,
                 ),
                 actions: [
+                   GlobalSupportButton(isDark: _isDark),
+                   const SizedBox(width: 8),
                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      style: IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
                       onPressed: () => widget.session.toggleTheme(),
                       icon: Icon(
                         _isDark ? Icons.wb_sunny_outlined : Icons.nightlight_round,
@@ -242,33 +331,63 @@ class _MobileNumberScreenState extends State<MobileNumberScreen> {
                                           color: borderColor,
                                         ),
                                         const SizedBox(width: 12),
-                                        // Text Field
+                                        // Custom Stack for "Masking" effect
                                         Expanded(
-                                          child: TextField(
-                                            controller: _controller,
-                                            keyboardType: TextInputType.number,
-                                            inputFormatters: [
-                                              FilteringTextInputFormatter.digitsOnly,
-                                              LengthLimitingTextInputFormatter(10),
-                                            ],
-                                            style: TextStyle(
-                                              color: inputTextColor,
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.w500,
-                                              letterSpacing: 1.2,
-                                            ),
-                                            cursorColor: primaryColor,
-                                            decoration: InputDecoration(
-                                              hintText: "00000 00000",
-                                              hintStyle: TextStyle(
-                                                color: hintColor,
-                                                fontSize: 18,
-                                                letterSpacing: 1.2,
+                                          child: Stack(
+                                            alignment: Alignment.centerLeft,
+                                            children: [
+                                              // 1. Background Placeholder (The "Mask")
+                                              IgnorePointer(
+                                                child: RichText(
+                                                  text: TextSpan(
+                                                    style: TextStyle(
+                                                      color: inputTextColor,
+                                                      fontSize: 18,
+                                                      fontWeight: FontWeight.w500,
+                                                      letterSpacing: 1.2,
+                                                      fontFamily: 'Inter', // Ensure font matches if defined globally
+                                                    ),
+                                                    children: [
+                                                      // Invisible text acting as spacer (matches what user typed)
+                                                      TextSpan(
+                                                        text: _controller.text,
+                                                        style: const TextStyle(color: Colors.transparent),
+                                                      ),
+                                                      // Visible remaining placeholder
+                                                      TextSpan(
+                                                        text: _controller.text.length < "XXXXX XXXXX".length
+                                                            ? "XXXXX XXXXX".substring(_controller.text.length)
+                                                            : "",
+                                                        style: TextStyle(color: hintColor),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
                                               ),
-                                              border: InputBorder.none,
-                                              contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                                              counterText: "",
-                                            ),
+
+                                              // 2. Actual TextField
+                                              TextField(
+                                                controller: _controller,
+                                                keyboardType: TextInputType.number,
+                                                inputFormatters: [
+                                                  FilteringTextInputFormatter.digitsOnly,
+                                                  MobileNumberFormatter(),
+                                                ],
+                                                style: TextStyle(
+                                                  color: inputTextColor,
+                                                  fontSize: 18,
+                                                  fontWeight: FontWeight.w500,
+                                                  letterSpacing: 1.2,
+                                                ),
+                                                cursorColor: primaryColor,
+                                                decoration: const InputDecoration(
+                                                  border: InputBorder.none,
+                                                  contentPadding: EdgeInsets.symmetric(vertical: 12),
+                                                  counterText: "",
+                                                  isDense: true, // Aligns better with RichText
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ),
                                       ],
@@ -357,23 +476,23 @@ class _MobileNumberScreenState extends State<MobileNumberScreen> {
                                 ),
                               ),
 
-                              const SizedBox(height: 24),
-                              // -- Trouble Logging In? --
-                              Center(
-                                child: TextButton(
-                                  onPressed: () {
-                                  },
-                                  child: Text(
-                                    "TROUBLE LOGGING IN?",
-                                    style: TextStyle(
-                                      color: _isDark ? Colors.white.withOpacity(0.5) : Colors.black54,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      letterSpacing: 1.0,
-                                    ),
-                                  ),
-                                ),
-                              ),
+                              // const SizedBox(height: 24),
+                              // // -- Trouble Logging In? --
+                              // Center(
+                              //   child: TextButton(
+                              //     onPressed: () {
+                              //     },
+                              //     child: Text(
+                              //       "TROUBLE LOGGING IN?",
+                              //       style: TextStyle(
+                              //         color: _isDark ? Colors.white.withOpacity(0.5) : Colors.black54,
+                              //         fontSize: 12,
+                              //         fontWeight: FontWeight.w600,
+                              //         letterSpacing: 1.0,
+                              //       ),
+                              //     ),
+                              //   ),
+                              // ),
                               const SizedBox(height: 16),
                               const SizedBox(height: 16),
                             ],
@@ -407,6 +526,31 @@ class _MobileNumberScreenState extends State<MobileNumberScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+// Custom Formatter for XXXXX XXXXX (10 digits)
+class MobileNumberFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    // 1. Get only digits
+    final text = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    
+    // 2. Limit to 10 digits
+    if (text.length > 10) return oldValue; 
+
+    // 3. Add formatting (XXXXX XXXXX)
+    final buffer = StringBuffer();
+    for (int i = 0; i < text.length; i++) {
+      if (i == 5) buffer.write(' ');
+      buffer.write(text[i]);
+    }
+    
+    final string = buffer.toString();
+    return newValue.copyWith(
+      text: string,
+      selection: TextSelection.collapsed(offset: string.length),
     );
   }
 }

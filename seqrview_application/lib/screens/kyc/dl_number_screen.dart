@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../app/session_controller.dart';
 import '../../app/onboarding_stage.dart';
+import '../../widgets/global_support_button.dart';
 
 class DLNumberScreen extends StatefulWidget {
   final SessionController session;
@@ -43,12 +44,75 @@ class _DLNumberScreenState extends State<DLNumberScreen> {
 
   String _prettyError(Object e) {
     if (e is DioException) {
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.sendTimeout) {
+        return "The service is taking too long to respond. Please check your internet or try again later.";
+      }
+      if (e.type == DioExceptionType.connectionError) {
+        return "Cannot connect to our servers. Please check your internet connection.";
+      }
+
       final data = e.response?.data;
-      if (data is Map && data['detail'] != null) return data['detail'].toString();
-      if (data is Map && data['reason'] != null) return data['reason'].toString();
-      return "Network/API error (${e.response?.statusCode ?? 'no status'})";
+      String? msg;
+      if (data is Map) {
+         msg = data['detail']?.toString() ?? data['message']?.toString() ?? data['reason']?.toString();
+      }
+
+      if (msg != null && msg.isNotEmpty) {
+        // 1. Check for specific raw backend error patterns
+        if (msg.contains("Surepass") && msg.contains("422")) {
+           return "Invalid Driving License or Date of Birth. Please check and try again.";
+        }
+        // 2. Return the actual error message
+        return msg;
+      }
+
+      return "Network error (${e.response?.statusCode ?? 'unknown'}). Please try again.";
     }
-    return e.toString();
+    return "An unexpected error occurred. Please try again.";
+  }
+
+  void _showErrorPopup(String message, {String title = "Connection Issue", IconData icon = Icons.signal_wifi_off_rounded}) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
+        backgroundColor: _isDark ? const Color(0xFF161A22) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(icon, color: Colors.orangeAccent, size: 28),
+            const SizedBox(width: 12),
+            Text(
+              title,
+              style: TextStyle(
+                color: _isDark ? Colors.white : const Color(0xFF1F2937),
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          message,
+          style: TextStyle(
+            color: _isDark ? const Color(0xFF8B949E) : const Color(0xFF4B5563),
+            fontSize: 14,
+            height: 1.5,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(
+              "OK",
+              style: TextStyle(color: Color(0xFF3B3B7A), fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   String _fmtDate(DateTime d) {
@@ -140,23 +204,32 @@ class _DLNumberScreenState extends State<DLNumberScreen> {
       );
 
       final data = res.data;
+      debugPrint("DEBUG: DL Start Response Data Type: ${data.runtimeType}");
+      
       final kycUid = (data is Map) ? data['kyc_session_uid']?.toString() : null;
       if (kycUid == null || kycUid.isEmpty) {
         throw Exception("Invalid server response: kyc_session_uid missing");
       }
 
-      widget.session.kycSessionUid = kycUid;
-      await widget.session.storage.saveKycSessionUid(kycUid);
+      await widget.session.setKycSessionUid(kycUid);
+
+      // Save DL details for auto-fill on Verify Details screen
+      if (data is Map && data['aadhaar_details'] != null) {
+        final details = Map<String, dynamic>.from(data['aadhaar_details']);
+        debugPrint("DEBUG: DL details found in response, setting in session");
+        await widget.session.setAadhaarDetails(details);
+      } else {
+        debugPrint("DEBUG: WARNING! aadhaar_details missing in DL Start response");
+      }
 
       // Always proceed to Verify Details after successful start
       widget.session.tempDob = _dob; // Save DOB for next screen
+      debugPrint("DEBUG: Moving to verifyDetails stage. tempDob=$_dob");
       widget.session.setStage(OnboardingStage.verifyDetails);
     } catch (e) {
-      if (e is DioException && e.response?.statusCode == 429) {
-        setState(() => _error = "Rate limited. Please wait and try again.");
-      } else {
-        setState(() => _error = _prettyError(e));
-      }
+      final msg = _prettyError(e);
+      setState(() => _error = msg);
+      _showErrorPopup(msg, title: (e is DioException && (e.type == DioExceptionType.connectionError || e.type == DioExceptionType.connectionTimeout)) ? "Connection Issue" : "Verification Error", icon: (e is DioException && (e.type == DioExceptionType.connectionError || e.type == DioExceptionType.connectionTimeout)) ? Icons.signal_wifi_off_rounded : Icons.error_outline_rounded);
     } finally {
       if (mounted) setState(() => _loading = false);
     }

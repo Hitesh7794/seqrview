@@ -1,4 +1,7 @@
 import secrets
+import csv
+import io
+from django.http import HttpResponse
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -28,12 +31,20 @@ from .serializers import (
 
 User = get_user_model()
 
+import re
+
 def _normalize_mobile(m: str) -> str:
     """Store/search mobile in a canonical form: last 10 digits."""
     digits = "".join(ch for ch in (m or "") if ch.isdigit())
     if len(digits) >= 10:
         digits = digits[-10:]
     return digits
+
+
+def is_valid_indian_mobile(mobile: str) -> bool:
+    """Check if the string matches Indian mobile number regex (10 digits starting with 6-9)."""
+    pattern = r'^[6789]\d{9}$'
+    return bool(re.match(pattern, mobile))
 
 
 def _generate_operator_username(mobile_10: str) -> str:
@@ -85,8 +96,8 @@ class OperatorOtpRequestView(APIView):
         ser.is_valid(raise_exception=True)
 
         mobile = _normalize_mobile(ser.validated_data["mobile"])
-        if len(mobile) != 10:
-            return Response({"detail": "Invalid mobile number"}, status=status.HTTP_400_BAD_REQUEST)
+        if not is_valid_indian_mobile(mobile):
+            return Response({"detail": "Invalid Indian mobile number. Must be 10 digits starting with 6-9."}, status=status.HTTP_400_BAD_REQUEST)
 
         
         user = (
@@ -142,11 +153,19 @@ class OperatorOtpRequestView(APIView):
             expires_at=OtpSession.default_expiry(),
         )
 
-        # TODO: send OTP via SMS gateway
-        print(f"[DEV OTP] mobile={mobile} otp={otp} session={sess.uid}")
+        # Call AuthKey API
+        from .utils import send_authkey_otp
+        api_resp = send_authkey_otp(mobile, otp)
+
+        print(f"[DEV OTP] mobile={mobile} otp={otp} session={sess.uid} authkey_resp={api_resp}")
 
         return Response(
-            {"otp_session_uid": str(sess.uid), "expires_at": sess.expires_at, "status": "OTP_SENT"},
+            {
+                "otp_session_uid": str(sess.uid), 
+                "expires_at": sess.expires_at, 
+                "status": "OTP_SENT",
+                "provider_response": api_resp
+            },
             status=status.HTTP_200_OK,
         )
 
@@ -246,6 +265,168 @@ class AppUserViewSet(viewsets.ModelViewSet):
         # In real world, we would trigger SMS gateway here or create a new OTP session
         
         return Response({"detail": f"Onboarding request sent for {user.username}"})
+
+    @action(detail=False, methods=['post'], permission_classes=[IsInternalAdmin])
+    def request_operator(self, request):
+        mobile = request.data.get('mobile')
+        name = request.data.get('name', '').strip()  # Get name
+
+        if not mobile:
+            return Response({"detail": "Mobile number is required."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        mobile_10 = _normalize_mobile(mobile)
+        if not is_valid_indian_mobile(mobile_10):
+             return Response({"detail": "Invalid Indian mobile number. Please provide a 10-digit number starting with 6-9."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Check if already exists
+        if User.objects.filter(mobile_primary=mobile_10).exists():
+            return Response({"detail": "User with this mobile number already exists."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Create placeholder user
+        try:
+            with transaction.atomic():
+                username = _generate_operator_username(mobile_10)
+                # Ensure username uniqueness (though generator is collision-safe, good to be safe)
+                for _ in range(5):
+                    if not User.objects.filter(username=username).exists():
+                        break
+                    username = _generate_operator_username(mobile_10)
+
+                user = User.objects.create_user(
+                    username=username,
+                    password=None,
+                    user_type="OPERATOR",
+                    status="REQUESTED",
+                    mobile_primary=mobile_10,
+                )
+                if name:
+                    user.first_name = name
+                
+                user.set_unusable_password()
+                # We must include 'full_name' because the model's save() method updates it based on first_name
+                user.save(update_fields=["password", "first_name", "full_name"])
+                
+                # Create profile
+                OperatorProfile.objects.get_or_create(user=user)
+                
+                # Send Onboarding Message
+                from .utils import send_onboarding_request_whatsapp
+                try:
+                    send_onboarding_request_whatsapp(mobile_10, name)
+                except Exception as e:
+                    print(f"Failed to send WhatsApp to {mobile_10}: {e}")
+                
+                return Response({
+                    "detail": "Operator request created successfully.",
+                    "uid": str(user.uid),
+                    "username": user.username
+                }, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='download-operator-template')
+    def download_operator_template(self, request):
+        """Generates a CSV template for bulk operator request."""
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="operator_bulk_template.csv"'
+        
+        writer = csv.writer(response)
+        writer.writerow(['mobile', 'name'])
+        writer.writerow(['9876543210', 'Rahul Singh'])
+        writer.writerow(['8877665544', 'Amit Kumar'])
+        
+        return response
+
+    @action(detail=False, methods=['post'], permission_classes=[IsInternalAdmin])
+    def bulk_request_operator(self, request):
+        file_obj = request.FILES.get('file')
+        if not file_obj:
+             # Fallback: check manual data
+             raw_data = request.data.get('mobiles', [])
+             if not raw_data:
+                  return Response({"detail": "File or 'mobiles' list required."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        rows = []
+        if file_obj:
+             if not file_obj.name.endswith('.csv'):
+                return Response({"detail": "Only CSV files are supported."}, status=status.HTTP_400_BAD_REQUEST)
+             try:
+                file_obj.seek(0)
+                decoded_file = file_obj.read().decode('utf-8')
+                reader = csv.DictReader(io.StringIO(decoded_file))
+                for row in reader:
+                    if 'mobile' in row:
+                        rows.append( {"mobile": row['mobile'], "name": row.get('name', '')} )
+             except Exception as e:
+                return Response({"detail": f"Error parsing CSV: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            # Manual fallback - handle if they send [{"mobile": "...", "name": "..."}] or just ["..."]
+            raw_data = request.data.get('mobiles', [])
+            for item in raw_data:
+                if isinstance(item, dict):
+                    rows.append(item)
+                else:
+                    rows.append({"mobile": str(item), "name": ""})
+
+        if not rows:
+            return Response({"detail": "No valid data found."}, status=status.HTTP_400_BAD_REQUEST)
+
+        results = {
+            "created": [],
+            "skipped": [],
+            "errors": []
+        }
+
+        from .utils import send_onboarding_request_whatsapp
+
+        with transaction.atomic():
+            for row in rows:
+                m = row.get('mobile')
+                name = row.get('name', '').strip()
+
+                mobile_10 = _normalize_mobile(str(m))
+                if not is_valid_indian_mobile(mobile_10):
+                    results["errors"].append({"mobile": m, "reason": "Invalid Indian mobile number."})
+                    continue
+                
+                if User.objects.filter(mobile_primary=mobile_10).exists():
+                    results["skipped"].append({"mobile": m, "reason": "User already exists."})
+                    continue
+                
+                try:
+                    username = _generate_operator_username(mobile_10)
+                    for _ in range(5):
+                        if not User.objects.filter(username=username).exists():
+                            break
+                        username = _generate_operator_username(mobile_10)
+
+                    user = User.objects.create_user(
+                        username=username,
+                        password=None,
+                        user_type="OPERATOR",
+                        status="REQUESTED",
+                        mobile_primary=mobile_10,
+                    )
+                    if name:
+                        user.first_name = name
+
+                    user.set_unusable_password()
+                    # We must include 'full_name' because the model's save() method updates it based on first_name
+                    user.save(update_fields=["password", "first_name", "full_name"])
+                    
+                    OperatorProfile.objects.get_or_create(user=user)
+                    
+                    # Send WhatsApp
+                    try:
+                        send_onboarding_request_whatsapp(mobile_10, name)
+                    except:
+                        pass # Don't fail the batch
+
+                    results["created"].append({"mobile": mobile_10, "username": username})
+                except Exception as e:
+                    results["errors"].append({"mobile": m, "reason": str(e)})
+
+        return Response(results, status=status.HTTP_200_OK)
 
 class BlacklistTokenView(APIView):
     permission_classes = [IsAuthenticated]

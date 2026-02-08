@@ -88,9 +88,16 @@ class _MainScreenState extends State<MainScreen> {
             HomeScreen(
               session: widget.session,
               onNavigateToTab: _onTabTapped,
+              isActive: _currentIndex == 0,
             ),
-            MyDutiesScreen(session: widget.session),
-            ProfileScreen(session: widget.session),
+            MyDutiesScreen(
+              session: widget.session,
+              isActive: _currentIndex == 1,
+            ),
+            ProfileScreen(
+              session: widget.session,
+              isActive: _currentIndex == 2,
+            ),
           ],
         ),
         bottomNavigationBar: BottomNavigationBar(

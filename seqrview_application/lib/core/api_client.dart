@@ -139,6 +139,42 @@ class ApiClient {
     }
   }
 
+  // --- Assignment Tasks ---
+
+
+
+  Future<List<dynamic>> getAssignmentTasksParsed(String assignmentUid) async {
+      final response = await dio.get('/api/assignments/tasks/', queryParameters: {
+        'assignment': assignmentUid,
+      });
+      final data = response.data;
+      if (data is Map<String, dynamic> && data.containsKey('results')) {
+        return data['results'] as List<dynamic>;
+      } else if (data is List) {
+        return data;
+      }
+      return [];
+  }
+
+  // Renaming to match `DutyDetailScreen` usage
+  Future<List<dynamic>> getAssignmentTasks(String assignmentUid) => getAssignmentTasksParsed(assignmentUid);
+
+
+  Future<void> completeTask(String taskUid, {List<String>? filePaths}) async {
+    if (filePaths != null && filePaths.isNotEmpty) {
+      final formData = FormData.fromMap({});
+      for (var path in filePaths) {
+          formData.files.add(MapEntry(
+            "attachments", // matches backend request.FILES.getlist('attachments')
+            await MultipartFile.fromFile(path),
+          ));
+      }
+      await dio.post('/api/assignments/tasks/$taskUid/complete/', data: formData);
+    } else {
+      await dio.post('/api/assignments/tasks/$taskUid/complete/');
+    }
+  }
+
   // --- Support / Incidents ---
 
   Future<List<dynamic>> getIncidentCategories() async {

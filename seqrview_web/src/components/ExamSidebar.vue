@@ -55,7 +55,7 @@ const navItems = computed(() => {
         { name: 'Manage Shifts', path: `/exam/${code}/shifts`, icon: ClockIcon },
         { name: 'Exam Centers', path: `/exam/${code}/centers`, icon: MapPinIcon },
         { name: 'Live Reports', path: `/exam/${code}/reports`, icon: DocumentChartBarIcon },
-        { name: 'Back to Admin', path: '/operations/exams', icon: ChevronLeftIcon, roles: ['INTERNAL_ADMIN', 'CLIENT_ADMIN'] }
+        // { name: 'Back to Admin', path: '/operations/exams', icon: ChevronLeftIcon, roles: ['INTERNAL_ADMIN', 'CLIENT_ADMIN'] }
     ].filter(item => {
         if (item.name === 'Back to Admin') {
             // Only show if user is actually an admin/client

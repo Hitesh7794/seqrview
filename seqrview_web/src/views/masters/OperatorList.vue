@@ -6,6 +6,24 @@
         <p class="text-sm text-gray-500 mt-1">Manage all field operators and verification requests.</p>
       </div>
       <div class="flex items-center gap-3">
+          <button 
+            @click="openBulkRequestModal"
+            class="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-sm"
+          >
+            <svg xmlns="http://www.w3.org/2000/xl" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+            Bulk Request
+          </button>
+          <button 
+            @click="openRequestModal"
+            class="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-all shadow-sm"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+            Request Operator
+          </button>
           <div class="relative">
               <input 
                 v-model="search" 
@@ -277,6 +295,178 @@
              </div>
         </div>
     </BaseModal>
+
+    <!-- Request Operator Modal -->
+    <BaseModal :isOpen="isRequestModalOpen" :title="'Request New Operator'" @close="closeRequestModal">
+        <div class="space-y-4">
+            <p class="text-sm text-gray-500">Enter the primary mobile number of the operator. We will create a placeholder account and trigger an onboarding request.</p>
+            <div>
+                <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Operator Name (Optional)</label>
+                <input 
+                    v-model="newOperatorName"
+                    type="text"
+                    placeholder="e.g. Hitesh Sharma"
+                    class="w-full px-4 py-2 bg-gray-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500 mb-3"
+                >
+                <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Mobile Number</label>
+                <input 
+                    v-model="newOperatorMobile"
+                    type="tel"
+                    maxlength="10"
+                    @input="newOperatorMobile = newOperatorMobile.replace(/\D/g, '')"
+                    placeholder="e.g. 9876543210"
+                    class="w-full px-4 py-2 bg-gray-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500"
+                    @keyup.enter="submitOperatorRequest"
+                >
+            </div>
+            <div v-if="requestError" class="p-3 bg-red-50 rounded-lg text-xs text-red-600 border border-red-100 italic">
+                {{ requestError }}
+            </div>
+        </div>
+        <template #footer>
+            <button 
+                @click="submitOperatorRequest"
+                :disabled="requesting || !newOperatorMobile"
+                class="inline-flex justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            >
+                <svg v-if="requesting" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                {{ requesting ? 'Sending Request...' : 'Send Onboarding Request' }}
+            </button>
+        </template>
+    </BaseModal>
+
+    <!-- Bulk Request Modal -->
+    <BaseModal :isOpen="isBulkModalOpen" title="Bulk Request Operators" @close="closeBulkModal">
+        <div class="relative min-h-[300px]">
+            <!-- Processing Overlay -->
+            <div v-if="bulkRequesting" class="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex flex-col items-center justify-center rounded-2xl">
+                <div class="relative">
+                    <div class="h-16 w-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
+                    <div class="absolute inset-0 flex items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                        </svg>
+                    </div>
+                </div>
+                <p class="mt-4 text-sm font-bold text-gray-900 tracking-tight">Requesting Operators...</p>
+                <p class="text-[10px] text-gray-500 mt-1 uppercase tracking-widest">Broadcasting onboarding requests</p>
+            </div>
+
+            <div class="space-y-6" :class="{ 'opacity-50 pointer-events-none': bulkRequesting }">
+                <div class="p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
+                    <p class="text-sm font-bold text-indigo-900 mb-1">Step 1: Download Template</p>
+                    <p class="text-xs text-indigo-700 mb-3">Download the template, fill it in Excel, and **save as CSV**.</p>
+                    <button 
+                        @click="downloadOperatorTemplate"
+                        class="flex items-center gap-2 px-4 py-2 bg-white text-indigo-600 rounded-xl text-xs font-bold border border-indigo-200 hover:bg-indigo-100 transition-all shadow-sm"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        Download Template (CSV)
+                    </button>
+                </div>
+
+                <div class="p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                    <p class="text-sm font-bold text-gray-900 mb-1">Step 2: Upload Filled File</p>
+                    <p class="text-xs text-gray-500 mb-3">Please upload the saved CSV file here.</p>
+                    <input 
+                        type="file" 
+                        ref="operatorFileInput"
+                        accept=".csv"
+                        @change="handleOperatorFileChange"
+                        class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                    />
+                </div>
+                
+                <div v-if="bulkError" class="p-3 bg-red-50 text-red-600 text-[10px] rounded-lg border border-red-100 italic">
+                    {{ bulkError }}
+                </div>
+
+                <div v-if="bulkResult" class="space-y-3">
+                    <div class="p-3 bg-indigo-50 text-indigo-700 text-xs rounded-lg border border-indigo-100 overflow-hidden relative">
+                        <!-- Tiny success decorative pattern -->
+                        <div class="absolute -right-2 -top-2 opacity-10">
+                            <svg class="w-12 h-12" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-2 text-center relative z-10">
+                            <div class="p-2 bg-white/50 rounded-xl border border-indigo-200/50">
+                                <div class="text-lg font-black text-indigo-900 leading-tight">{{ bulkResult.created.length }}</div>
+                                <div class="text-[9px] uppercase font-bold tracking-tighter opacity-60">Created</div>
+                            </div>
+                            <div class="p-2 bg-white/50 rounded-xl border border-yellow-200/50">
+                                <div class="text-lg font-black text-yellow-700 leading-tight">{{ bulkResult.skipped.length }}</div>
+                                <div class="text-[9px] uppercase font-bold tracking-tighter opacity-60">Existing</div>
+                            </div>
+                            <div class="p-2 bg-white/50 rounded-xl border border-red-200/50">
+                                <div class="text-lg font-black text-red-600 leading-tight">{{ bulkResult.errors.length }}</div>
+                                <div class="text-[9px] uppercase font-bold tracking-tighter opacity-60">Failed</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Detailed Erroneous Mobile Numbers -->
+                    <div v-if="bulkResult.errors.length > 0" class="max-h-48 overflow-y-auto space-y-2 rounded-xl border border-gray-100 p-2 bg-gray-50">
+                        <div v-for="(err, idx) in bulkResult.errors" :key="idx" class="p-2 bg-white rounded-lg border border-red-50 text-[10px] flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-red-400"></span>
+                                <span class="font-bold text-gray-700">{{ err.mobile }}</span>
+                            </div>
+                            <span class="text-red-500 italic">{{ err.reason }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <template #footer>
+            <button 
+                @click="submitBulkRequest"
+                :disabled="bulkRequesting || !selectedOperatorFile"
+                class="inline-flex justify-center rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-indigo-700 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md shadow-indigo-100"
+            >
+                {{ bulkRequesting ? 'Requesting...' : 'Submit Bulk Request' }}
+            </button>
+        </template>
+    </BaseModal>
+
+    <!-- Confirmation Modal -->
+    <BaseModal :isOpen="isConfirmModalOpen" :title="confirmTitle" :showCancel="false" @close="closeConfirmModal">
+        <div class="space-y-4">
+            <p class="text-sm text-gray-500">{{ confirmMessage }}</p>
+        </div>
+        <template #footer>
+            <button 
+                @click="handleConfirm"
+                :disabled="isConfirming"
+                :class="confirmButtonClass"
+                class="inline-flex justify-center rounded-lg px-4 py-2 text-sm font-bold shadow-sm focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            >
+                <div v-if="isConfirming" class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                {{ isConfirming ? 'Processing...' : confirmButtonText }}
+            </button>
+        </template>
+    </BaseModal>
+
+    <!-- Success Modal -->
+    <BaseModal :isOpen="isSuccessModalOpen" :title="successTitle" :showCancel="false" @close="closeSuccessModal">
+        <div class="space-y-4">
+            <div class="flex items-center gap-3 text-green-600 bg-green-50 p-3 rounded-xl border border-green-100">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p class="text-sm font-bold">{{ successMessage }}</p>
+            </div>
+        </div>
+        <template #footer>
+            <button 
+                @click="closeSuccessModal"
+                class="inline-flex justify-center rounded-lg bg-gray-100 px-4 py-2 text-sm font-bold text-gray-900 hover:bg-gray-200 focus:outline-none transition-all"
+            >
+                Close
+            </button>
+        </template>
+    </BaseModal>
   </div>
 </template>
 
@@ -293,6 +483,19 @@ const duties = ref([]);
 const loadingDuties = ref(false);
 const selectedOperator = ref(null);
 const isViewModalOpen = ref(false);
+
+const isRequestModalOpen = ref(false);
+const newOperatorMobile = ref('');
+const newOperatorName = ref('');
+const requesting = ref(false);
+const requestError = ref('');
+
+const isBulkModalOpen = ref(false);
+const bulkRequesting = ref(false);
+const bulkError = ref('');
+const bulkResult = ref(null);
+const selectedOperatorFile = ref(null);
+const operatorFileInput = ref(null);
 
 const loadDuties = async (operatorId) => {
     loadingDuties.value = true;
@@ -357,30 +560,190 @@ const closeViewModal = () => {
     selectedOperator.value = null;
 };
 
-const blockUser = async (user) => {
-    const isBlocked = user.status === 'BLACKLIST';
-    const action = isBlocked ? 'Unblock' : 'Block';
-    if (!confirm(`Are you sure you want to ${action.toLowerCase()} this operator?`)) return;
+const openRequestModal = () => {
+    isRequestModalOpen.value = true;
+    newOperatorMobile.value = '';
+    newOperatorName.value = '';
+    requestError.value = '';
+};
 
+const closeRequestModal = () => {
+    isRequestModalOpen.value = false;
+};
+
+const openBulkRequestModal = () => {
+    isBulkModalOpen.value = true;
+    selectedOperatorFile.value = null;
+    bulkError.value = '';
+    bulkResult.value = null;
+    if (operatorFileInput.value) operatorFileInput.value.value = '';
+};
+
+const closeBulkModal = () => {
+    isBulkModalOpen.value = false;
+};
+
+const handleOperatorFileChange = (e) => {
+    selectedOperatorFile.value = e.target.files[0];
+};
+
+const downloadOperatorTemplate = async () => {
     try {
-        const newStatus = isBlocked ? 'ACTIVE' : 'BLACKLIST';
-        await api.patch(`/identity/users/${user.uid}/`, { status: newStatus });
-        await loadOperators();
+        const response = await api.get('/identity/users/download-operator-template/', {
+            responseType: 'blob'
+        });
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', 'operator_bulk_template.csv');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
     } catch (e) {
-        console.error("Failed to update status", e);
-        alert(`Failed to ${action.toLowerCase()} operator.`);
+        console.error("Failed to download template", e);
+        alert("Failed to download template. Please check your connection.");
     }
 };
 
-const deleteUser = async (user) => {
-    if (!confirm(`Are you sure you want to PERMANENTLY delete ${user.username}? This cannot be undone.`)) return;
+const submitBulkRequest = async () => {
+    if (!selectedOperatorFile.value) return;
+    
+    const formData = new FormData();
+    formData.append('file', selectedOperatorFile.value);
+
+    bulkRequesting.value = true;
+    bulkError.value = '';
+    bulkResult.value = null;
     try {
-        await api.delete(`/identity/users/${user.uid}/`);
+        const res = await api.post('/identity/users/bulk_request_operator/', formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data'
+            }
+        });
+        bulkResult.value = res.data;
         await loadOperators();
+        if (res.data.errors.length === 0 && res.data.skipped.length === 0) {
+            setTimeout(() => {
+                closeBulkModal();
+                openSuccessModal('Bulk Request Sent', `Successfully requested ${res.data.created.length} operators.`);
+            }, 1000);
+        }
     } catch (e) {
-         console.error("Failed to delete user", e);
-         alert("Failed to delete user.");
+        bulkError.value = e.response?.data?.detail || "Failed to process bulk request. Ensure it is a valid CSV.";
+    } finally {
+        bulkRequesting.value = false;
     }
+};
+
+const submitOperatorRequest = async () => {
+    if (!newOperatorMobile.value) return;
+    
+    // Indian mobile regex: 10 digits starting with 6-9
+    const mobileRegex = /^[6789]\d{9}$/;
+    const normalizedMobile = newOperatorMobile.value.replace(/\D/g, '').slice(-10);
+    
+    if (!mobileRegex.test(normalizedMobile)) {
+        requestError.value = "Please enter a valid 10-digit Indian mobile number starting with 6-9.";
+        return;
+    }
+
+    requesting.value = true;
+    requestError.value = '';
+    try {
+        await api.post('/identity/users/request_operator/', { 
+            mobile: normalizedMobile,
+            name: newOperatorName.value 
+        });
+        closeRequestModal();
+        await loadOperators();
+        openSuccessModal('Request Sent', "Operator request sent successfully!");
+    } catch (e) {
+        requestError.value = e.response?.data?.detail || "Failed to send request. Please check the mobile number.";
+    } finally {
+        requesting.value = false;
+    }
+};
+
+const isConfirmModalOpen = ref(false);
+const confirmTitle = ref('');
+const confirmMessage = ref('');
+const confirmButtonText = ref('Confirm');
+const confirmButtonClass = ref('');
+const isConfirming = ref(false);
+let onConfirm = null;
+
+const closeConfirmModal = () => {
+    isConfirmModalOpen.value = false;
+    onConfirm = null;
+};
+
+const handleConfirm = async () => {
+    if (!onConfirm) return;
+    
+    isConfirming.value = true;
+    try {
+        await onConfirm();
+        closeConfirmModal();
+    } catch (e) {
+        console.error("Confirmation action failed", e);
+        // Optional: show error toast or keep modal open with error
+    } finally {
+        isConfirming.value = false;
+    }
+};
+
+const openConfirmModal = ({ title, message, buttonText, buttonClass, action }) => {
+    confirmTitle.value = title;
+    confirmMessage.value = message;
+    confirmButtonText.value = buttonText || 'Confirm';
+    confirmButtonClass.value = buttonClass || 'bg-blue-600 text-white hover:bg-blue-700';
+    onConfirm = action;
+    isConfirmModalOpen.value = true;
+};
+
+const blockUser = (user) => {
+    const isBlocked = user.status === 'BLACKLIST';
+    const action = isBlocked ? 'Unblock' : 'Block';
+    const newStatus = isBlocked ? 'ACTIVE' : 'BLACKLIST';
+    
+    openConfirmModal({
+        title: `${action} Operator`,
+        message: `Are you sure you want to ${action.toLowerCase()} ${user.full_name || user.username}?`,
+        buttonText: action,
+        buttonClass: isBlocked ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-orange-600 text-white hover:bg-orange-700',
+        action: async () => {
+            await api.patch(`/identity/users/${user.uid}/`, { status: newStatus });
+            await loadOperators();
+        }
+    });
+};
+
+const isSuccessModalOpen = ref(false);
+const successTitle = ref('');
+const successMessage = ref('');
+
+const closeSuccessModal = () => {
+    isSuccessModalOpen.value = false;
+};
+
+const openSuccessModal = (title, message) => {
+    successTitle.value = title;
+    successMessage.value = message;
+    isSuccessModalOpen.value = true;
+};
+
+const deleteUser = (user) => {
+    openConfirmModal({
+        title: 'Delete Operator',
+        message: `Are you sure you want to PERMANENTLY delete ${user.full_name || user.username}? This cannot be undone.`,
+        buttonText: 'Delete Operator',
+        buttonClass: 'bg-red-600 text-white hover:bg-red-700',
+        action: async () => {
+            await api.delete(`/identity/users/${user.uid}/`);
+            await loadOperators();
+        }
+    });
 };
 
 onMounted(loadOperators);

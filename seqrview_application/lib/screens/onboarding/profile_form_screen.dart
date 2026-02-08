@@ -21,11 +21,55 @@ class _ProfileFormScreenState extends State<ProfileFormScreen> {
 
   String _prettyError(Object e) {
     if (e is DioException) {
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.sendTimeout) {
+        return "The service is taking too long to respond. Please check your internet or try again later.";
+      }
+      if (e.type == DioExceptionType.connectionError) {
+        return "Cannot connect to our servers. Please check your internet connection.";
+      }
+
       final data = e.response?.data;
       if (data is Map && data['detail'] != null) return data['detail'].toString();
+      if (data is Map && data['message'] != null) return data['message'].toString();
+
       return "Network/API error (${e.response?.statusCode ?? 'no status'})";
     }
-    return e.toString();
+    return "An unexpected error occurred. Please try again.";
+  }
+
+  void _showErrorPopup(String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.signal_wifi_off_rounded, color: Colors.orangeAccent, size: 28),
+            const SizedBox(width: 12),
+            const Text(
+              "Connection Issue",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            ),
+          ],
+        ),
+        content: Text(
+          message,
+          style: const TextStyle(fontSize: 14, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(
+              "OK",
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   String _fmtDate(DateTime d) {
@@ -80,7 +124,13 @@ class _ProfileFormScreenState extends State<ProfileFormScreen> {
 
       await widget.session.bootstrap();
     } catch (e) {
-      setState(() => _error = _prettyError(e));
+      final msg = _prettyError(e);
+      setState(() => _error = msg);
+      if (e is DioException && (
+          e.type == DioExceptionType.connectionError || 
+          e.type == DioExceptionType.connectionTimeout)) {
+        _showErrorPopup(msg);
+      }
     } finally {
       setState(() => _loading = false);
     }

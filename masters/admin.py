@@ -10,9 +10,9 @@ class ClientAdmin(admin.ModelAdmin):
 
 @admin.register(CenterMaster)
 class CenterMasterAdmin(admin.ModelAdmin):
-    list_display = ('center_code', 'name', 'city', 'status', 'rating', 'total_computers_functional')
+    list_display = ('center_code', 'name', 'client', 'city', 'status', 'rating', 'total_computers_functional')
     search_fields = ('name', 'center_code', 'city', 'pincode')
-    list_filter = ('status', 'center_type', 'ownership_type', 'state')
+    list_filter = ('status', 'client', 'ownership_type', 'state')
     
 @admin.register(RoleMaster)
 class RoleMasterAdmin(admin.ModelAdmin):

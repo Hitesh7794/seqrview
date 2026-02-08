@@ -1,6 +1,6 @@
 <template>
   <BaseModal :isOpen="isOpen" :title="examData ? 'Edit Exam' : 'Create New Exam'" @close="$emit('close')">
-    <form @submit.prevent="saveExam" class="space-y-4">
+    <form id="exam-form" @submit.prevent="saveExam" class="space-y-4">
       <!-- Exam Name -->
       <div>
         <label class="block text-sm font-medium text-gray-700">Exam Name</label>
@@ -69,25 +69,46 @@
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2"
         ></textarea>
       </div>
-
-      <div class="flex justify-end pt-4 space-x-3">
-         <button 
-          type="button" 
-          class="inline-flex justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none"
-          @click="$emit('close')"
+      
+      <!-- Geofencing Toggle -->
+      <div class="flex items-center py-2">
+        <input 
+          v-model="form.is_geofencing_enabled" 
+          id="geofencing-toggle" 
+          type="checkbox" 
+          class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
         >
-          Cancel
-        </button>
+        <label for="geofencing-toggle" class="ml-2 block text-sm text-gray-900">
+          Enable Geofencing restriction for this exam
+        </label>
+      </div>
+
+      <!-- Selfie Toggle -->
+      <div class="flex items-center py-2">
+        <input 
+          v-model="form.is_selfie_enabled" 
+          id="selfie-toggle" 
+          type="checkbox" 
+          class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+        >
+        <label for="selfie-toggle" class="ml-2 block text-sm text-gray-900">
+          Enable Selfie requirement during Check-in/Check-out
+        </label>
+      </div>
+
+    </form>
+    
+    <template #footer>
         <button 
           type="submit" 
+          form="exam-form"
           :disabled="isSubmitting"
           class="inline-flex justify-center rounded-lg border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <span v-if="isSubmitting">{{ examData ? 'Using...' : 'Creating...' }}</span>
           <span v-else>{{ examData ? 'Update Exam' : 'Create Exam' }}</span>
         </button>
-      </div>
-    </form>
+    </template>
   </BaseModal>
 </template>
 
@@ -115,12 +136,14 @@ const form = reactive({
   client: '',
   exam_start_date: '',
   exam_end_date: '',
-  description: ''
+  description: '',
+  is_geofencing_enabled: true,
+  is_selfie_enabled: true
 });
 
 const loadClients = async () => {
     try {
-        const res = await api.get('/clients/');
+        const res = await api.get('/masters/clients/');
         clients.value = res.data.results || res.data;
     } catch (e) {
         console.error("Failed to load clients", e);
@@ -134,6 +157,8 @@ const resetForm = () => {
     form.exam_start_date = '';
     form.exam_end_date = '';
     form.description = '';
+    form.is_geofencing_enabled = true;
+    form.is_selfie_enabled = true;
 };
 
 // Watch for changes in examData to populate form
@@ -142,9 +167,11 @@ watch(() => props.examData, (newVal) => {
         form.name = newVal.name;
         form.exam_code = newVal.exam_code;
         form.client = newVal.client; // Ensure this maps to the UID
-        form.exam_start_date = newVal.exam_start_date;
-        form.exam_end_date = newVal.exam_end_date;
-        form.description = newVal.description;
+        form.exam_start_date = newVal.exam_start_date || '';
+        form.exam_end_date = newVal.exam_end_date || '';
+        form.description = newVal.description || '';
+        form.is_geofencing_enabled = newVal.is_geofencing_enabled ?? true;
+        form.is_selfie_enabled = newVal.is_selfie_enabled ?? true;
     } else {
         resetForm();
     }
@@ -153,12 +180,17 @@ watch(() => props.examData, (newVal) => {
 const saveExam = async () => {
     isSubmitting.value = true;
     try {
+        const payload = { ...form };
+        // Convert empty strings to null for DateFields to avoid 400 Bad Request
+        if (!payload.exam_start_date) payload.exam_start_date = null;
+        if (!payload.exam_end_date) payload.exam_end_date = null;
+
         if (props.examData) {
             // Edit Mode
-            await api.patch(`/operations/exams/${props.examData.uid}/`, form);
+            await api.patch(`/operations/exams/${props.examData.uid}/`, payload);
         } else {
             // Create Mode
-            await api.post('/operations/exams/', form);
+            await api.post('/operations/exams/', payload);
         }
         emit('success');
         resetForm();

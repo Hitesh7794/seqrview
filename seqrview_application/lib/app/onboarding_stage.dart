@@ -14,4 +14,5 @@ enum OnboardingStage {
   verified,
   failed,
   rejected,
+  blocked,
 }

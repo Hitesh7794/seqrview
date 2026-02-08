@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:dio/dio.dart';
 import '../core/api_client.dart';
 import '../core/token_storage.dart';
 import 'onboarding_stage.dart';
@@ -43,6 +45,12 @@ class SessionController extends ChangeNotifier {
     lastAadhaarNumber = idNumber;
   }
 
+  Future<void> setAadhaarDetails(Map<String, dynamic> details) async {
+    aadhaarDetails = details;
+    await storage.saveAadhaarDetails(jsonEncode(details));
+    notifyListeners();
+  }
+
   Future<void> setKycSessionUid(String uid) async {
     kycSessionUid = uid;
     await storage.saveKycSessionUid(uid);
@@ -53,6 +61,7 @@ class SessionController extends ChangeNotifier {
     tempDob = null;
     aadhaarDetails = null;
     await storage.clearKycSessionUid();
+    await storage.clearAadhaarDetails();
   }
 
   Future<void> logout() async {
@@ -74,7 +83,7 @@ class SessionController extends ChangeNotifier {
       // ignore reset errors; we'll still clear locally
     }
     await clearKycSession();
-    stage = OnboardingStage.aadhaarNumber;
+    stage = OnboardingStage.chooseKycMethod;
     notifyListeners();
   }
 
@@ -86,6 +95,13 @@ class SessionController extends ChangeNotifier {
     mobile = await storage.getMobile();
     kycSessionUid = await storage.getKycSessionUid();
     isDark = await storage.getIsDarkTheme();
+
+    final detailsJson = await storage.getAadhaarDetails();
+    if (detailsJson != null && detailsJson.isNotEmpty) {
+      try {
+        aadhaarDetails = Map<String, dynamic>.from(jsonDecode(detailsJson));
+      } catch (_) {}
+    }
 
     final access = await storage.getAccess();
     if (access == null || access.isEmpty) {
@@ -117,6 +133,15 @@ class SessionController extends ChangeNotifier {
       stage = _guardStage(stage); // avoid stuck if kycSessionUid missing
       notifyListeners();
     } catch (e) {
+      if (e is DioException) {
+         final data = e.response?.data;
+         if (data is Map && data['code'] == 'user_inactive') {
+           stage = OnboardingStage.blocked;
+           notifyListeners();
+           return;
+         }
+      }
+      
       // If 401 after refresh attempt, or any other error => logout for safety
       // This prevents infinite retry loops when user doesn't exist in DB
       await logout();

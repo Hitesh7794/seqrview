@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import '../../app/session_controller.dart';
 import '../../app/onboarding_stage.dart';
+import '../../widgets/global_support_button.dart';
 
 class AadhaarVerifyDetailsScreen extends StatefulWidget {
   final SessionController session;
@@ -17,6 +18,7 @@ class AadhaarVerifyDetailsScreen extends StatefulWidget {
 
 class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen> {
   final _fullName = TextEditingController();
+  final _dobController = TextEditingController();
   final _address = TextEditingController();
   DateTime? _dob;
   String? _gender;
@@ -27,12 +29,24 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
   bool _isDL = false;
   bool _methodChecked = false; // Prevent multiple checks
   String? _error;
+  
+  // Auto-fill status
+  bool _didAutoFill = false;
+  bool _consentToUseAadhaarData = false;
+  bool _hasAadhaarData = false;
 
   // Global Theme
   bool get _isDark => widget.session.isDark;
   
   void _update() {
-    if (mounted) setState(() {});
+    if (mounted) {
+      debugPrint("DEBUG: _update: hasData=$_hasAadhaarData, details=${widget.session.aadhaarDetails != null}");
+      if (!_hasAadhaarData && widget.session.aadhaarDetails != null && widget.session.aadhaarDetails!.isNotEmpty) {
+        debugPrint("DEBUG: _update: Data detected, running auto-fill");
+        _runAutoFill();
+      }
+      setState(() {});
+    }
   }
   
   // Helper for date formatting
@@ -45,25 +59,342 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
 
   String _prettyError(Object e) {
     if (e is DioException) {
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.sendTimeout) {
+        return "The verification service is taking too long to respond. Please check your internet or try again later.";
+      }
+      if (e.type == DioExceptionType.connectionError) {
+        return "Cannot connect to the verification service. Please check your internet connection.";
+      }
+
       final data = e.response?.data;
-      if (data is Map && data['detail'] != null) return data['detail'].toString();
-      if (data is Map && data['message'] != null) return data['message'].toString();
-      return "Network/API error (${e.response?.statusCode ?? 'no status'})";
+      String? msg;
+      if (data is Map) {
+         msg = data['detail']?.toString() ?? data['message']?.toString();
+      }
+      
+      if (msg != null && msg.isNotEmpty) {
+        // 1. Check for specific raw backend error patterns
+        if (msg.contains("Surepass") && msg.contains("422")) {
+           return "Invalid details provided. Please check and try again.";
+        }
+        // 2. Return the actual error message
+        return msg;
+      }
+      
+      return "Network error (${e.response?.statusCode ?? 'unknown'}). Please try again.";
     }
-    return e.toString();
+    return "An unexpected error occurred. Please try again.";
+  }
+
+  void _showErrorPopup(String message, {String title = "Connection Issue", IconData icon = Icons.signal_wifi_off_rounded}) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
+        backgroundColor: _isDark ? const Color(0xFF161A22) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(icon, color: Colors.orangeAccent, size: 28),
+            const SizedBox(width: 12),
+            Text(
+              title,
+              style: TextStyle(
+                color: _isDark ? Colors.white : const Color(0xFF1F2937),
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          message,
+          style: TextStyle(
+            color: _isDark ? const Color(0xFF8B949E) : const Color(0xFF4B5563),
+            fontSize: 14,
+            height: 1.5,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(
+              "OK",
+              style: TextStyle(color: Color(0xFF3B3B7A), fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   void initState() {
     super.initState();
     widget.session.addListener(_update);
-    // Check if we have tempDob (from DL screen)
-    if (widget.session.tempDob != null) {
-      _dob = widget.session.tempDob;
-      _isDL = true; // Assume DL if passing tempDob
-      // _methodChecked = true; // Removed: Always verify with server to catch state mismatch
-    }
+    
+    // Initial check for method to set _isDL correctly from the start
     _checkMethod();
+    
+    // Run initial auto-fill - immediately and then after a brief delay to handle session sync
+    _runAutoFill();
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted && !_hasAadhaarData) {
+        debugPrint("DEBUG: Retrying auto-fill after 300ms delay...");
+        _runAutoFill();
+      }
+    });
+
+    // Check tempDob specially for DL
+    if (widget.session.tempDob != null) {
+      debugPrint("DEBUG: Found tempDob in initState: ${widget.session.tempDob}");
+      setState(() {
+         _dob = widget.session.tempDob;
+         _dobController.text = _fmtDate(_dob!);
+         _isDL = true; // High confidence it's DL if tempDob is present
+      });
+    }
+  }
+  
+  void _runAutoFill() {
+    final data = widget.session.aadhaarDetails;
+    debugPrint("DEBUG: _runAutoFill: Session Data present? ${data != null}, size: ${data?.length}");
+    
+    if (data == null || data.isEmpty) {
+       debugPrint("DEBUG: _runAutoFill: No data found in session details");
+       return;
+    }
+
+    _applyData(data);
+  }
+  
+  void _applyData(Map<String, dynamic> data) {
+    debugPrint("DEBUG: _applyData: Applying data to UI: $data");
+
+    // Mapping for common abbreviations
+    final stateAlias = {
+      'UP': 'Uttar Pradesh', 'MP': 'Madhya Pradesh', 'AP': 'Andhra Pradesh',
+      'TN': 'Tamil Nadu', 'KL': 'Kerala', 'MH': 'Maharashtra',
+      'GJ': 'Gujarat', 'RJ': 'Rajasthan', 'KA': 'Karnataka',
+      'WB': 'West Bengal', 'DL': 'Delhi', 'RAJ': 'Rajasthan',
+      'HR': 'Haryana', 'PB': 'Punjab', 'TS': 'Telangana',
+      'TG': 'Telangana', 'UK': 'Uttarakhand', 'UA': 'Uttarakhand',
+      'HP': 'Himachal Pradesh', 'JK': 'Jammu and Kashmir',
+      'CT': 'Chhattisgarh', 'CG': 'Chhattisgarh', 'GA': 'Goa',
+      'AR': 'Arunachal Pradesh', 'AS': 'Assam', 'BR': 'Bihar',
+      'JH': 'Jharkhand', 'MN': 'Manipur', 'ML': 'Meghalaya',
+      'MZ': 'Mizoram', 'NL': 'Nagaland', 'OR': 'Odisha',
+      'SK': 'Sikkim', 'TR': 'Tripura', 'AN': 'Andaman and Nicobar Islands',
+      'CH': 'Chandigarh', 'DN': 'Dadra and Nagar Haveli and Daman and Diu',
+      'LD': 'Lakshadweep', 'PY': 'Puducherry',
+    };
+
+    String? deepFind(dynamic obj, List<String> searchKeys) {
+      if (obj == null) return null;
+      if (obj is Map) {
+        for (final k in searchKeys) {
+          final v = obj[k];
+          if (v is String || v is num || v is bool) {
+            final s = v.toString().trim();
+            if (s.isNotEmpty) return s;
+          }
+        }
+        for (final entry in obj.entries) {
+          if (entry.value is Map || entry.value is List) {
+            final found = deepFind(entry.value, searchKeys);
+            if (found != null) return found;
+          }
+        }
+      } else if (obj is List) {
+        for (final item in obj) {
+          final found = deepFind(item, searchKeys);
+          if (found != null) return found;
+        }
+      }
+      return null;
+    }
+
+    String? findState(String? input) {
+      if (input == null) return null;
+      var clean = input.trim().toUpperCase();
+      final aliasMatch = stateAlias[clean];
+      if (aliasMatch != null) clean = aliasMatch.toUpperCase();
+      for (final s in _states) {
+        if (s.toUpperCase() == clean) return s;
+      }
+      for (final s in _states) {
+        if (clean.contains(s.toUpperCase())) return s;
+      }
+      return null;
+    }
+
+    String? searchAllForState(dynamic obj) {
+      if (obj == null) return null;
+      if (obj is String) {
+        final match = findState(obj);
+        if (match != null) return match;
+      } else if (obj is Map) {
+        for (final v in obj.values) {
+          final m = searchAllForState(v);
+          if (m != null) return m;
+        }
+      } else if (obj is List) {
+        for (final v in obj) {
+          final m = searchAllForState(v);
+          if (m != null) return m;
+        }
+      }
+      return null;
+    }
+
+    String? guessStateFromDistrict(String? dist) {
+      if (dist == null) return null;
+      final clean = dist.trim().toLowerCase();
+      for (final entry in _districtsByState.entries) {
+        for (final d in entry.value) {
+          if (d.toLowerCase() == clean) return entry.key;
+        }
+      }
+      return null;
+    }
+
+    setState(() {
+      // 1. Name
+      final nameStr = deepFind(data, ['full_name', 'name', 'name_on_card', 'Name', 'fullName']);
+      debugPrint("DEBUG: _applyData parsed Name: '$nameStr'");
+      if (nameStr != null && nameStr.isNotEmpty) {
+        _fullName.text = nameStr;
+      }
+      
+      // 2. DOB (Handle both flows)
+      final dobValue = deepFind(data, ['date_of_birth', 'dob', 'birth_date', 'DOB', 'dateOfBirth']);
+      debugPrint("DEBUG: _applyData parsed DOB Value: '$dobValue'");
+      DateTime? parsedDob;
+      if (dobValue != null) {
+        try {
+          parsedDob = DateTime.parse(dobValue);
+        } catch (_) {
+          final clean = dobValue.replaceAll(RegExp(r'[^0-9\-]'), '-').replaceAll('/', '-');
+          final parts = clean.split('-').where((p) => p.isNotEmpty).toList();
+          if (parts.length == 3) {
+            try {
+              int d = 0, m = 0, y = 0;
+              if (parts[0].length == 4) { y = int.parse(parts[0]); m = int.parse(parts[1]); d = int.parse(parts[2]); }
+              else if (parts[2].length == 4) { d = int.parse(parts[0]); m = int.parse(parts[1]); y = int.parse(parts[2]); }
+              if (y > 0) parsedDob = DateTime(y, m, d);
+            } catch (_) {}
+          }
+        }
+      }
+      
+      // Prefer tempDob for DL, then parsedDob
+      if (widget.session.tempDob != null) {
+        _dob = widget.session.tempDob;
+      } else if (parsedDob != null) {
+        _dob = parsedDob;
+      }
+
+      if (_dob != null) {
+        _dobController.text = _fmtDate(_dob!);
+      }
+      
+      // 3. Gender
+      final gStr = deepFind(data, ['gender', 'Gender', 'sex', 'Sex', 'Gnd'])?.toUpperCase();
+      debugPrint("DEBUG: _applyData parsed Gender: '$gStr'");
+      if (gStr != null && gStr.isNotEmpty) {
+        if (gStr.startsWith('M')) _gender = 'M';
+        else if (gStr.startsWith('F')) _gender = 'F';
+        else if (gStr.startsWith('O')) _gender = 'O';
+      }
+      
+      // 4. State & District
+      final stateKeys = ['state', 'state_code', 'State', 'ST', 'region'];
+      final distKeys = ['district', 'dist', 'District', 'DT', 'city', 'town', 'village'];
+      final zipKeys = ['pincode', 'zip', 'zipcode', 'postal_code', 'pin'];
+      
+      var stateRaw = deepFind(data, stateKeys);
+      var distRaw = deepFind(data, distKeys);
+      var zipRaw = deepFind(data, zipKeys);
+      
+      stateRaw ??= searchAllForState(data);
+      _selectedState = findState(stateRaw);
+      if (_selectedState == null) {
+        _selectedState = guessStateFromDistrict(distRaw);
+      }
+      
+      // Validate District
+      if (_selectedState != null && distRaw != null) {
+        final validDistricts = _districtsByState[_selectedState] ?? [];
+        final m = validDistricts.firstWhere(
+          (d) => d.toLowerCase() == distRaw!.toLowerCase(),
+          orElse: () => "",
+        );
+        _selectedDistrict = m.isEmpty ? null : m;
+      } else {
+        _selectedDistrict = distRaw;
+      }
+
+      // 5. Address Harvesting
+      final addressParts = <String>{};
+      final skipKeys = {
+        'state', 'name', 'full_name', 'gender', 'dob', 'date_of_birth', 
+        'aadhaar_number', 'photo', 'kyc_session_uid', 'next', 'status', 'success'
+      };
+      
+      void harvest(dynamic obj) {
+        if (obj is Map) {
+          for (final entry in obj.entries) {
+            final key = entry.key.toString().toLowerCase();
+            final val = entry.value;
+            if (skipKeys.contains(key)) continue;
+            if (val is String || val is num) {
+              final s = val.toString().trim();
+              if (s.isNotEmpty && s.length > 2) addressParts.add(s);
+            } else if (val is Map || val is List) { harvest(val); }
+          }
+        } else if (obj is List) {
+          for (final item in obj) harvest(item);
+        }
+      }
+
+      harvest(data);
+      final fallbackAddress = deepFind(data, ['address', 'full_address', 'address_raw']);
+      if (fallbackAddress != null) addressParts.add(fallbackAddress);
+
+      if (addressParts.isNotEmpty) {
+        final sorted = addressParts.toList()
+          ..removeWhere((p) => p == _selectedState || p == _selectedDistrict);
+        var finalAddr = sorted.join(", ").trim();
+        if (zipRaw != null && !finalAddr.contains(zipRaw)) finalAddr = "$finalAddr, $zipRaw";
+        _address.text = finalAddr;
+      }
+
+      _hasAadhaarData = true;
+      debugPrint("DEBUG: Auto-fill completed. hasAadhaarData=$_hasAadhaarData");
+    });
+  }
+
+  String addressRaw(Map data) {
+    if (data['address'] != null) return data['address'].toString();
+    // Fallback if address is missing but segments exist
+    final parts = <String>[];
+    if (data['house'] != null) parts.add(data['house'].toString());
+    if (data['street'] != null) parts.add(data['street'].toString());
+    return parts.join(", ");
+  }
+  
+  void _clearFormData() {
+    _fullName.clear();
+    _dobController.clear();
+    _address.clear();
+    if (!_isDL) {
+      _dob = null;
+    }
+    _gender = null;
+    _selectedState = null;
+    _selectedDistrict = null;
   }
 
   Future<void> _checkMethod() async {
@@ -81,6 +412,7 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
           if (_isDL && dobStr != null) {
             try {
               _dob = DateTime.parse(dobStr);
+              _dobController.text = _fmtDate(_dob!);
             } catch (_) {
               // Ignore parse error
             }
@@ -101,7 +433,12 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
       firstDate: DateTime(1950, 1, 1),
       lastDate: DateTime(now.year - 10, 12, 31),
     );
-    if (picked != null) setState(() => _dob = picked);
+    if (picked != null) {
+      setState(() {
+        _dob = picked;
+        _dobController.text = _fmtDate(picked);
+      });
+    }
   }
 
   Future<void> _verify() async {
@@ -134,6 +471,12 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
     final address = _address.text.trim();
     if (address.isEmpty) {
       setState(() => _error = "Please enter your full address");
+      return;
+    }
+    
+    // Check consent if Aadhaar data was used
+    if (_hasAadhaarData && !_consentToUseAadhaarData) {
+      setState(() => _error = "Please confirm the pre-filled details by checking the consent box");
       return;
     }
 
@@ -187,7 +530,18 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
         setState(() => _error = errorMsg);
       }
     } catch (e) {
-      setState(() => _error = _prettyError(e));
+      if (e is DioException) {
+        final data = e.response?.data;
+        final code = data is Map ? data['code']?.toString() : null;
+        if (code == 'RESTART_REQUIRED' || e.response?.statusCode == 429) {
+          await widget.session.resetKyc();
+          return;
+        }
+      }
+      final msg = _prettyError(e);
+      _showErrorPopup(msg, 
+        title: (e is DioException && (e.type == DioExceptionType.connectionError || e.type == DioExceptionType.connectionTimeout)) ? "Connection Issue" : "Verification Error",
+        icon: (e is DioException && (e.type == DioExceptionType.connectionError || e.type == DioExceptionType.connectionTimeout)) ? Icons.signal_wifi_off_rounded : Icons.error_outline_rounded);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -197,6 +551,7 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
   void dispose() {
     widget.session.removeListener(_update);
     _fullName.dispose();
+    _dobController.dispose();
     _address.dispose();
     super.dispose();
   }
@@ -217,8 +572,6 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
     final cardColor = _isDark ? const Color(0xFF161A22) : Colors.white;
     final borderColor = _isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.1);
     final accentColor = const Color(0xFF6366F1); // Indigo
-
-    final dobText = _dob == null ? "mm/dd/yyyy" : _fmtDate(_dob!);
 
     InputDecoration inputDeco(String label, {String? hint, Widget? suffix}) {
       return InputDecoration(
@@ -261,6 +614,7 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
         ),
         centerTitle: false,
         actions: [
+          GlobalSupportButton(isDark: _isDark),
           IconButton(
             onPressed: () => widget.session.toggleTheme(),
             icon: Icon(
@@ -320,12 +674,12 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
                     const SizedBox(height: 8),
                     TextField(
                       controller: _fullName,
+                      readOnly: _fullName.text.isNotEmpty && _hasAadhaarData,
                       style: TextStyle(color: textMain),
-                      decoration: inputDeco("Full Name", hint: "Hitesh Sharma"),
+                      decoration: inputDeco("Full Name"),
                     ),
                     const SizedBox(height: 24),
 
-                    // DOB & Gender Row
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -336,18 +690,20 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
                             children: [
                               Text("DATE OF BIRTH", style: TextStyle(color: textSub, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
                               const SizedBox(height: 8),
-                              InkWell(
-                                onTap: (!_isDL && !_loading) ? _pickDob : null, // Disable picker if DL (DOB fixed)
-                                borderRadius: BorderRadius.circular(12),
-                                child: IgnorePointer(
-                                  ignoring: true, // Let InkWell handle tap
+                               InkWell(
+                                  onTap: null, // Read-only
+                                  borderRadius: BorderRadius.circular(12),
                                   child: TextField(
-                                    controller: TextEditingController(text: dobText),
-                                    style: TextStyle(color: _isDL ? textSub : textMain), // Dim if disabled
-                                    decoration: inputDeco("", suffix: Icon(Icons.calendar_today_outlined, size: 20, color: textSub)),
+                                    controller: _dobController,
+                                    readOnly: true,
+                                    enabled: false,
+                                    style: TextStyle(color: textMain),
+                                    decoration: inputDeco(
+                                      "Date of Birth", 
+                                      suffix: Icon(Icons.calendar_today_outlined, size: 20, color: textSub)
+                                    ),
                                   ),
                                 ),
-                              ),
                             ],
                           ),
                         ),
@@ -361,16 +717,17 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
                               const SizedBox(height: 8),
                               DropdownButtonFormField<String>(
                                 value: _gender,
-                                dropdownColor: cardColor,
-                                decoration: inputDeco("Select Gender"),
-                                style: TextStyle(color: textMain, fontSize: 16),
-                                icon: Icon(Icons.keyboard_arrow_down, color: textSub),
                                 items: const [
-                                  DropdownMenuItem(value: "M", child: Text("Male")),
-                                  DropdownMenuItem(value: "F", child: Text("Female")),
-                                  DropdownMenuItem(value: "O", child: Text("Other")),
+                                  DropdownMenuItem(value: 'M', child: Text("Male")),
+                                  DropdownMenuItem(value: 'F', child: Text("Female")),
+                                  DropdownMenuItem(value: 'O', child: Text("Other")),
                                 ],
-                                onChanged: _loading ? null : (v) => setState(() => _gender = v),
+                                onChanged: (_gender != null && _hasAadhaarData) ? null : (v) => setState(() => _gender = v),
+                                style: TextStyle(color: textMain, fontSize: 16),
+                                decoration: inputDeco("Select Gender"),
+                                dropdownColor: cardColor,
+                                icon: Icon(Icons.keyboard_arrow_down_rounded, color: textSub),
+                                isExpanded: true, // Prevent overflow
                               ),
                             ],
                           ),
@@ -379,11 +736,10 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
                     ),
                     const SizedBox(height: 24),
 
-                    // STATE & DISTRICT Row
+                    // STATE & DISTRICT
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // STATE
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -392,27 +748,23 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
                               const SizedBox(height: 8),
                               DropdownButtonFormField<String>(
                                 value: _selectedState,
-                                dropdownColor: cardColor,
-                                isExpanded: true,
-                                decoration: inputDeco("Select State"),
-                                style: TextStyle(color: textMain, fontSize: 16),
-                                icon: Icon(Icons.keyboard_arrow_down, color: textSub),
-                                items: _states.map((state) => DropdownMenuItem(
-                                  value: state,
-                                  child: Text(state, overflow: TextOverflow.ellipsis),
-                                )).toList(),
-                                onChanged: _loading ? null : (v) {
+                                items: _states.map((s) => DropdownMenuItem(value: s, child: Text(s, style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis))).toList(),
+                                onChanged: (_selectedState != null && _hasAadhaarData) ? null : (v) {
                                   setState(() {
                                     _selectedState = v;
                                     _selectedDistrict = null;
                                   });
                                 },
+                                style: TextStyle(color: textMain),
+                                decoration: inputDeco("Select State"),
+                                dropdownColor: cardColor,
+                                icon: Icon(Icons.keyboard_arrow_down_rounded, color: textSub),
+                                isExpanded: true,
                               ),
                             ],
                           ),
                         ),
                         const SizedBox(width: 16),
-                        // DISTRICT
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -421,16 +773,14 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
                               const SizedBox(height: 8),
                               DropdownButtonFormField<String>(
                                 value: _selectedDistrict,
-                                dropdownColor: cardColor,
-                                isExpanded: true,
+                                items: (_selectedState == null ? <String>[] : (_districtsByState[_selectedState] ?? []))
+                                    .map((d) => DropdownMenuItem(value: d, child: Text(d, style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis))).toList(),
+                                onChanged: (_selectedDistrict != null && _hasAadhaarData) ? null : (v) => setState(() => _selectedDistrict = v),
+                                style: TextStyle(color: textMain),
                                 decoration: inputDeco("Select District"),
-                                style: TextStyle(color: textMain, fontSize: 16),
-                                icon: Icon(Icons.keyboard_arrow_down, color: textSub),
-                                items: _districts.map((district) => DropdownMenuItem(
-                                  value: district,
-                                  child: Text(district, overflow: TextOverflow.ellipsis),
-                                )).toList(),
-                                onChanged: _loading || _selectedState == null ? null : (v) => setState(() => _selectedDistrict = v),
+                                dropdownColor: cardColor,
+                                icon: Icon(Icons.keyboard_arrow_down_rounded, color: textSub),
+                                isExpanded: true,
                               ),
                             ],
                           ),
@@ -439,30 +789,68 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
                     ),
                     const SizedBox(height: 24),
 
-                    // FULL ADDRESS
                     Text("FULL ADDRESS *", style: TextStyle(color: textSub, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
                     const SizedBox(height: 8),
                     TextField(
                       controller: _address,
+                      readOnly: _address.text.isNotEmpty && _hasAadhaarData,
                       maxLines: 4,
-                      style: TextStyle(color: textMain),
-                      decoration: inputDeco("Address", hint: "Street name, building number, apartment..."),
+                      style: TextStyle(color: textMain, fontSize: 14, height: 1.5),
+                      decoration: inputDeco("Address"),
                     ),
-
-                    const SizedBox(height: 24),
-
-                    if (_error != null)
+             const SizedBox(height: 24),
+                    
+                    // Consent Checkbox (at bottom)
+                    if (_hasAadhaarData) ...[
                       Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        margin: const EdgeInsets.only(bottom: 24),
+                        padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(8),
-                          color: Colors.red.withOpacity(0.1),
-                          border: Border.all(color: Colors.red.withOpacity(0.3)),
+                          color: accentColor.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: accentColor.withOpacity(0.2)),
                         ),
-                        child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13)),
+                        child: InkWell(
+                          onTap: () {
+                            setState(() {
+                              _consentToUseAadhaarData = !_consentToUseAadhaarData;
+                            });
+                          },
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: Checkbox(
+                                  value: _consentToUseAadhaarData,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _consentToUseAadhaarData = value ?? false;
+                                    });
+                                  },
+                                  activeColor: accentColor,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  "I confirm that the above details are correct and match my ${_isDL ? 'Driving License' : 'Aadhaar card'}",
+                                  style: TextStyle(
+                                    color: textMain,
+                                    fontSize: 14,
+                                    height: 1.4,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
+                      const SizedBox(height: 16),
+                    ],
+
+
+                    // const SizedBox(height: 16), // Removed inline error padding
 
                     const SizedBox(height: 80), // Bottom padding for button
                   ],

@@ -66,6 +66,7 @@ class Client(TimeStampedUUIDModel):
 
 
 class CenterMaster(TimeStampedUUIDModel):
+    client = models.ForeignKey(Client, on_delete=models.SET_NULL, null=True, blank=True, related_name='centers')
     center_code = models.CharField(max_length=50, unique=True, db_index=True)
     name = models.CharField(max_length=255)
 
@@ -76,18 +77,6 @@ class CenterMaster(TimeStampedUUIDModel):
     )
 
     center_variety = models.CharField(max_length=50, choices=CENTER_VARIETY_CHOICES, null=True, blank=True)
-
-    CENTER_TYPE_CHOICES = (
-        ('SCHOOL','School'),
-        ('COLLEGE','College'),
-        ('UNIVERSITY','University'),
-        ('WORKSHOP','Workshop'),
-        ('PRIVATE_LAB','Private Lab'),
-        ('COACHING','Coaching'),
-        ('OTHER','Other')
-    )
-
-    center_type = models.CharField(max_length=50, choices=CENTER_TYPE_CHOICES, null=True, blank=True)
 
 
     OWNERSHIP_CHOICES = (
@@ -204,3 +193,21 @@ class RoleMaster(TimeStampedUUIDModel):
     
     def __str__(self):
         return f"{self.name} ({self.code})"
+
+class TaskLibrary(TimeStampedUUIDModel):
+    name = models.CharField(max_length=255, unique=True, db_index=True)
+    description = models.TextField(null=True, blank=True)
+    
+    TASK_TYPE_CHOICES = (
+        ('CHECKLIST', 'Checklist'),
+        ('PHOTO', 'Photo'),
+        ('VIDEO', 'Video'),
+    )
+    task_type = models.CharField(max_length=20, choices=TASK_TYPE_CHOICES, default='CHECKLIST')
+    
+    class Meta:
+        verbose_name_plural = "Task Library"
+        ordering = ['name']
+    
+    def __str__(self):
+        return self.name

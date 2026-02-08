@@ -25,9 +25,16 @@
             leave-to="opacity-0 scale-95"
           >
             <DialogPanel class="w-full max-w-md transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all">
-              <DialogTitle as="h3" class="text-lg font-bold leading-6 text-gray-900 mb-4">
-                {{ title }}
-              </DialogTitle>
+              <div class="flex justify-between items-center mb-4">
+                <DialogTitle as="h3" class="text-lg font-bold leading-6 text-gray-900">
+                  {{ title }}
+                </DialogTitle>
+                <button @click="closeModal" class="text-gray-400 hover:text-gray-500 transition-colors">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
               
               <div class="mt-2">
                 <slot></slot>
@@ -35,6 +42,7 @@
 
               <div class="mt-6 flex justify-end space-x-3">
                 <button
+                  v-if="showCancel"
                   type="button"
                   class="inline-flex justify-center rounded-lg border border-transparent bg-gray-100 px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2"
                   @click="closeModal"
@@ -57,7 +65,11 @@ import { TransitionRoot, TransitionChild, Dialog, DialogPanel, DialogTitle } fro
 
 const props = defineProps({
   isOpen: Boolean,
-  title: String
+  title: String,
+  showCancel: {
+    type: Boolean,
+    default: true
+  }
 });
 
 const emit = defineEmits(['close']);

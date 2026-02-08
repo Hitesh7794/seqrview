@@ -5,6 +5,9 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/session_controller.dart';
+import '../../app/onboarding_stage.dart';
+
+import '../../widgets/global_support_button.dart';
 
 class OtpVerifySheet extends StatefulWidget {
   final SessionController session;
@@ -71,11 +74,80 @@ class _OtpVerifySheetState extends State<OtpVerifySheet> {
 
   String _prettyError(Object e) {
     if (e is DioException) {
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.sendTimeout) {
+        return "The service is taking too long to respond. Please check your internet or try again later.";
+      }
+      if (e.type == DioExceptionType.connectionError) {
+        return "Cannot connect to our servers. Please check your internet connection.";
+      }
+
       final data = e.response?.data;
-      if (data is Map && data['detail'] != null) return data['detail'].toString();
-      return "Network/API error (${e.response?.statusCode ?? 'no status'})";
+      String? msg;
+      if (data is Map) {
+         msg = data['detail']?.toString() ?? data['message']?.toString();
+      }
+
+      if (msg != null && msg.isNotEmpty) {
+        final lower = msg.toLowerCase();
+        if (lower.contains("surepass") || 
+            lower.contains("authkey") || 
+            lower.contains("credit") || 
+            lower.contains("balance") || 
+            lower.contains("api key") || 
+            lower.contains("client_id") ||
+            lower.contains("unauthorized")) {
+           return "Service unavailable. Please try again later.";
+        }
+        return msg;
+      }
+
+      return "Network error (${e.response?.statusCode ?? 'unknown'}). Please try again.";
     }
-    return e.toString();
+    return "An unexpected error occurred. Please try again.";
+  }
+
+  void _showErrorPopup(String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
+        backgroundColor: _isDark ? const Color(0xFF161A22) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.signal_wifi_off_rounded, color: Colors.orangeAccent, size: 28),
+            const SizedBox(width: 12),
+            Text(
+              "Connection Issue",
+              style: TextStyle(
+                color: _isDark ? Colors.white : const Color(0xFF1F2937),
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          message,
+          style: TextStyle(
+            color: _isDark ? const Color(0xFF8B949E) : const Color(0xFF4B5563),
+            fontSize: 14,
+            height: 1.5,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(
+              "OK",
+              style: TextStyle(color: Color(0xFF3B3B7A), fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _verify() async {
@@ -119,7 +191,39 @@ class _OtpVerifySheetState extends State<OtpVerifySheet> {
 
       await widget.session.bootstrap(); // router auto-redirect
     } catch (e) {
-      setState(() => _error = _prettyError(e));
+      if (e is DioException) {
+        final data = e.response?.data;
+        // If user is inactive/blocked, we still want to proceed to bootstrap
+        // because bootstrap() now handles the 'blocked' stage routing.
+        if (data is Map && data['code'] == 'user_inactive') {
+           // Clear session immediately to avoid stale state
+           await widget.session.logout(); // This clears tokens
+           // But wait! If we logout, we can't bootstrap effectively to get the 'blocked' state 
+           // because bootstrap relies on tokens to hit profile API.
+           // ACTUALLY: The 401 comes from verify call itself? No, verify returns tokens. 
+           // If verify fails with user_inactive, we can't get tokens.
+           // So we can't hit profile API.
+           // So we should manually set stage to blocked here?
+           // OR we can just show the error message.
+           // better: show error message OR navigate to blocked screen manually if possible?
+           // user_inactive on login means they can't get a token.
+           // So bootstrap won't work.
+           
+           // We should probably just show the error popup for now? 
+           // BUT user wanted "show block message screen".
+           // To show screen we need to set stage.
+           widget.session.setStage(OnboardingStage.blocked);
+           return;
+        }
+      }
+
+      final msg = _prettyError(e);
+      setState(() => _error = msg);
+      if (e is DioException && (
+          e.type == DioExceptionType.connectionError || 
+          e.type == DioExceptionType.connectionTimeout)) {
+        _showErrorPopup(msg);
+      }
     } finally {
       setState(() => _loading = false);
     }
@@ -157,7 +261,13 @@ class _OtpVerifySheetState extends State<OtpVerifySheet> {
         const SnackBar(content: Text("OTP Resent!")),
       );
     } catch (e) {
-      setState(() => _error = _prettyError(e));
+      final msg = _prettyError(e);
+      setState(() => _error = msg);
+      if (e is DioException && (
+          e.type == DioExceptionType.connectionError || 
+          e.type == DioExceptionType.connectionTimeout)) {
+        _showErrorPopup(msg);
+      }
     } finally {
       setState(() => _resendLoading = false);
     }
@@ -204,6 +314,8 @@ class _OtpVerifySheetState extends State<OtpVerifySheet> {
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
+              GlobalSupportButton(isDark: _isDark),
+              const SizedBox(width: 12),
               IconButton(
                 icon: Icon(Icons.close, color: textSub),
                 onPressed: widget.onClose,

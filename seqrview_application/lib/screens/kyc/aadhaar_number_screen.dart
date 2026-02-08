@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../app/session_controller.dart';
 import '../../app/onboarding_stage.dart';
 import 'aadhaar_otp_screen.dart'; // Import Sheet Widget
+import '../../widgets/global_support_button.dart';
 
 class AadhaarNumberScreen extends StatefulWidget {
   final SessionController session;
@@ -42,6 +43,10 @@ class _AadhaarNumberScreenState extends State<AadhaarNumberScreen> {
   void initState() {
     super.initState();
     widget.session.addListener(_update);
+    // Listen to controller changes to update the custom placeholder
+    _aadhaar.addListener(() {
+      if (mounted) setState(() {});
+    });
     _restoreCooldown();
 
     // Set full screen mode
@@ -105,25 +110,91 @@ class _AadhaarNumberScreenState extends State<AadhaarNumberScreen> {
 
   String _prettyError(Object e) {
     if (e is DioException) {
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.sendTimeout) {
+        return "The service is taking too long to respond. Please check your internet or try again later.";
+      }
+      if (e.type == DioExceptionType.connectionError) {
+        return "Cannot connect to our servers. Please check your internet connection.";
+      }
+
       final data = e.response?.data;
-      if (data is Map && data['detail'] != null) return data['detail'].toString();
-      if (data is Map && data['reason'] != null) return data['reason'].toString();
-      return "Network/API error (${e.response?.statusCode ?? 'no status'})";
+      String? msg;
+      if (data is Map) {
+         msg = data['detail']?.toString() ?? data['message']?.toString() ?? data['reason']?.toString();
+      }
+
+      if (msg != null && msg.isNotEmpty) {
+        // 1. Check for specific raw backend error patterns
+        if (msg.contains("Surepass") && msg.contains("422")) {
+           return "Invalid Aadhaar Number. Please check and try again.";
+        }
+        // 2. Return the actual error message
+        return msg;
+      }
+
+      return "Network error (${e.response?.statusCode ?? 'unknown'}). Please try again.";
     }
-    return e.toString();
+    return "An unexpected error occurred. Please try again.";
   }
+
+  void _showErrorPopup(String message, {String title = "Connection Issue", IconData icon = Icons.signal_wifi_off_rounded}) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
+        backgroundColor: _isDark ? const Color(0xFF161A22) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(icon, color: Colors.orangeAccent, size: 28),
+            const SizedBox(width: 12),
+            Text(
+              title,
+              style: TextStyle(
+                color: _isDark ? Colors.white : const Color(0xFF1F2937),
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          message,
+          style: TextStyle(
+            color: _isDark ? const Color(0xFF8B949E) : const Color(0xFF4B5563),
+            fontSize: 14,
+            height: 1.5,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(
+              "OK",
+              style: TextStyle(color: Color(0xFF3B3B7A), fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+
+
 
   Future<void> _start() async {
     if (_cooldown > 0) return;
 
     final id = _digitsOnly(_aadhaar.text.trim());
-    widget.session.setLastAadhaarNumber(id);
-
     if (id.length != 12) {
-      setState(() => _error = "Please enter a valid 12-digit Aadhaar number");
+      _showErrorPopup("Please enter a valid 12-digit Aadhaar number.", title: "Invalid Aadhaar", icon: Icons.error_outline_rounded);
       return;
     }
 
+    widget.session.setLastAadhaarNumber(id);
+    
     setState(() {
       _error = null;
       _loading = true;
@@ -158,18 +229,33 @@ class _AadhaarNumberScreenState extends State<AadhaarNumberScreen> {
       });
        
     } catch (e) {
-      if (e is DioException && e.response?.statusCode == 429) {
-        int wait = 60; 
-        final data = e.response?.data;
-        if (data is Map && data['retry_after_seconds'] != null) {
-          final v = data['retry_after_seconds'];
-          wait = v is int ? v : int.tryParse(v.toString()) ?? wait;
-        }
-        await _startCooldown(wait);
-        setState(() => _error = "Rate limited. Please wait ${wait}s and try again.");
-      } else {
-        setState(() => _error = _prettyError(e));
+      String title = "Verification Failed";
+      String msg = _prettyError(e);
+
+      if (e is DioException) {
+         if (e.response?.statusCode == 429) {
+            title = "Too Many Attempts";
+            msg = "You have exceeded the retry limit. Please wait a while before trying again.";
+            int wait = 60; 
+            final data = e.response?.data;
+            if (data is Map && data['retry_after_seconds'] != null) {
+              final v = data['retry_after_seconds'];
+              wait = v is int ? v : int.tryParse(v.toString()) ?? wait;
+            }
+            await _startCooldown(wait);
+         } else if (e.response?.statusCode == 400 || e.response?.statusCode == 422) {
+             title = "Invalid Input";
+             // Clean up generic server errors
+             if (msg.contains("client_id")) msg = "Service unavailable. Please try again later.";
+             if (msg.contains("surepass")) msg = "Verification service reported an issue. Please verify the number.";
+         } else if (e.response?.statusCode == 500) {
+             title = "Server Error";
+             msg = "Something went wrong on our end. Please report this issue.";
+         }
       }
+
+      _showErrorPopup(msg, title: title, icon: title == "Connection Issue" ? Icons.signal_wifi_off_rounded : Icons.error_outline_rounded);
+      
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -311,34 +397,67 @@ class _AadhaarNumberScreenState extends State<AadhaarNumberScreen> {
                                     borderRadius: BorderRadius.circular(16),
                                     border: Border.all(color: borderColor),
                                   ),
-                                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16), // Increased vertical padding
                                   child: Row(
                                     children: [
-                                       Icon(Icons.fingerprint, color: accentColor, size: 28),
+                                       Icon(Icons.fingerprint, color: accentColor, size: 32), // Increased Icon size
                                        const SizedBox(width: 16),
                                        Expanded(
-                                         child: TextField(
-                                           controller: _aadhaar,
-                                           keyboardType: TextInputType.number,
-                                           inputFormatters: [
-                                             FilteringTextInputFormatter.digitsOnly,
-                                             LengthLimitingTextInputFormatter(12),
+                                         child: Stack(
+                                           alignment: Alignment.centerLeft,
+                                           children: [
+                                              // 1. Background Placeholder (The "Mask")
+                                              IgnorePointer(
+                                                child: RichText(
+                                                  text: TextSpan(
+                                                    style: TextStyle(
+                                                      color: textMain,
+                                                      fontSize: 28, // Increased size
+                                                      letterSpacing: 2.0,
+                                                      fontFamily: 'RobotoMono', 
+                                                      fontWeight: FontWeight.w500,
+                                                    ),
+                                                    children: [
+                                                      // Invisible text acting as spacer (matches what user typed)
+                                                      TextSpan(
+                                                        text: _aadhaar.text,
+                                                        style: const TextStyle(color: Colors.transparent),
+                                                      ),
+                                                      // Visible remaining placeholder
+                                                      TextSpan(
+                                                        text: _aadhaar.text.length < "XXXX XXXX XXXX".length
+                                                            ? "XXXX XXXX XXXX".substring(_aadhaar.text.length)
+                                                            : "",
+                                                        style: TextStyle(color: textSub.withOpacity(0.3)),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+
+                                              // 2. Actual TextField
+                                              TextField(
+                                                controller: _aadhaar,
+                                                keyboardType: TextInputType.number,
+                                                inputFormatters: [
+                                                  FilteringTextInputFormatter.digitsOnly,
+                                                  AadhaarFormatter(),
+                                                ],
+                                                style: TextStyle(
+                                                  color: textMain,
+                                                  fontSize: 28, // Increased size
+                                                  letterSpacing: 2.0,
+                                                  fontFamily: 'RobotoMono', 
+                                                  fontWeight: FontWeight.w500
+                                                ),
+                                                decoration: const InputDecoration(
+                                                  border: InputBorder.none,
+                                                  contentPadding: EdgeInsets.zero,
+                                                  counterText: "",
+                                                  isDense: true,
+                                                ),
+                                              ),
                                            ],
-                                           style: TextStyle(
-                                             color: textMain,
-                                             fontSize: 18, 
-                                             letterSpacing: 2.0,
-                                             fontFamily: 'RobotoMono', 
-                                             fontWeight: FontWeight.w500
-                                           ),
-                                           decoration: InputDecoration(
-                                             border: InputBorder.none,
-                                             hintText: "0000 0000 0000",
-                                             hintStyle: TextStyle(
-                                               color: textSub.withOpacity(0.3),
-                                               letterSpacing: 2.0,
-                                             ),
-                                           ),
                                          ),
                                        )
                                     ],
@@ -438,6 +557,27 @@ class _AadhaarNumberScreenState extends State<AadhaarNumberScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// Custom Formatter for XXXX XXXX XXXX
+class AadhaarFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    final text = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (text.length > 12) return oldValue; // Limit 12 digits
+
+    final buffer = StringBuffer();
+    for (int i = 0; i < text.length; i++) {
+      if (i > 0 && i % 4 == 0) buffer.write(' ');
+      buffer.write(text[i]);
+    }
+    
+    final string = buffer.toString();
+    return newValue.copyWith(
+      text: string,
+      selection: TextSelection.collapsed(offset: string.length),
     );
   }
 }

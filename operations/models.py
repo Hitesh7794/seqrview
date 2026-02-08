@@ -35,6 +35,9 @@ class Exam(TimeStampedUUIDModel):
     admin_username = models.CharField(max_length=150, null=True, blank=True)
     admin_password = models.CharField(max_length=128, null=True, blank=True)
     
+    is_geofencing_enabled = models.BooleanField(default=True)
+    is_selfie_enabled = models.BooleanField(default=True)
+    
    
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -174,6 +177,7 @@ class ExamCenter(TimeStampedUUIDModel):
     
     active_capacity = models.IntegerField(null=True, blank=True)
     expected_candidates = models.IntegerField(default=0)
+    city = models.CharField(max_length=100, null=True, blank=True)
     
     
     incharge_name = models.CharField(max_length=150, null=True, blank=True)
@@ -224,33 +228,43 @@ class ExamCenter(TimeStampedUUIDModel):
                 # If code is different but location is same (within 50m), link to existing.
                 candidates = []
                 if self.latitude and self.longitude:
-                    # Bounding box filter (approx +/- 0.001 deg is ~111m)
-                    lat_min = self.latitude - 0.001
-                    lat_max = self.latitude + 0.001
-                    lon_min = self.longitude - 0.001
-                    lon_max = self.longitude + 0.001
-                    
-                    possible_matches = CenterMaster.objects.filter(
-                        latitude__gte=lat_min, latitude__lte=lat_max,
-                        longitude__gte=lon_min, longitude__lte=lon_max
-                    )
-                    
-                    # Refine with Haversine
-                    import math
-                    def calc_dist(lat1, lon1, lat2, lon2):
-                        R = 6371000
-                        phi1, phi2 = math.radians(lat1), math.radians(lat2)
-                        dphi = math.radians(lat2 - lat1)
-                        dlambda = math.radians(lon2 - lon1)
-                        a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
-                        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
-                        return R * c
+                    try:
+                        lat_val = float(self.latitude)
+                        lon_val = float(self.longitude)
+                        
+                        # Bounding box filter (approx +/- 0.001 deg is ~111m)
+                        lat_min = lat_val - 0.001
+                        lat_max = lat_val + 0.001
+                        lon_min = lon_val - 0.001
+                        lon_max = lon_val + 0.001
+                        
+                        possible_matches = CenterMaster.objects.filter(
+                            latitude__gte=lat_min, latitude__lte=lat_max,
+                            longitude__gte=lon_min, longitude__lte=lon_max
+                        )
+                        
+                        # Refine with Haversine
+                        import math
+                        def calc_dist(lat1, lon1, lat2, lon2):
+                            R = 6371000
+                            phi1, phi2 = math.radians(lat1), math.radians(lat2)
+                            dphi = math.radians(lat2 - lat1)
+                            dlambda = math.radians(lon2 - lon1)
+                            a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
+                            c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+                            return R * c
 
-                    for pm in possible_matches:
-                        dist = calc_dist(float(self.latitude), float(self.longitude), float(pm.latitude), float(pm.longitude))
-                        if dist <= 50: # Match if within 50 meters
-                            candidates.append(pm)
-                            break # Take the first close match
+                        for pm in possible_matches:
+                            # PM lat/long are Decimal, convert to float
+                            pm_lat = float(pm.latitude) if pm.latitude else 0.0
+                            pm_lon = float(pm.longitude) if pm.longitude else 0.0
+                            
+                            dist = calc_dist(lat_val, lon_val, pm_lat, pm_lon)
+                            if dist <= 50: # Match if within 50 meters
+                                candidates.append(pm)
+                                break # Take the first close match
+                    except (ValueError, TypeError):
+                        pass # Invalid lat/long formats, skip geo-match
                 
                 if candidates:
                     self.master_center = candidates[0]
@@ -353,3 +367,27 @@ class ShiftCenterRole(TimeStampedUUIDModel):
     
     def __str__(self):
         return f"{self.shift_center} - {self.role.name} (Need: {self.headcount})"
+
+class ShiftCenterTask(TimeStampedUUIDModel):
+    shift_center = models.ForeignKey('operations.ShiftCenter', on_delete=models.CASCADE, related_name='tasks')
+    role = models.ForeignKey('masters.RoleMaster', on_delete=models.PROTECT, related_name='shift_tasks')
+    task_name = models.CharField(max_length=255)
+    
+    TASK_TYPE_CHOICES = (
+        ('CHECKLIST', 'Checklist'),
+        ('PHOTO', 'Photo'),
+        ('VIDEO', 'Video'),
+    )
+    task_type = models.CharField(max_length=20, choices=TASK_TYPE_CHOICES, default='CHECKLIST')
+    
+    is_mandatory = models.BooleanField(default=True)
+    
+    class Meta:
+        db_table = 'shift_center_task'
+        unique_together = [['shift_center', 'role', 'task_name']]
+        indexes = [
+            models.Index(fields=['shift_center', 'role']),
+        ]
+        
+    def __str__(self):
+        return f"{self.task_name} ({self.shift_center})"

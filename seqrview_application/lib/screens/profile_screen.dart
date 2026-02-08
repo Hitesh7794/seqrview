@@ -2,11 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../app/session_controller.dart';
 import '../core/config.dart';
-import '../../widgets/support_floating_button.dart';
+import '../../widgets/global_support_button.dart';
 
 class ProfileScreen extends StatefulWidget {
   final SessionController session;
-  const ProfileScreen({super.key, required this.session});
+  final bool isActive;
+
+  const ProfileScreen({
+    super.key, 
+    required this.session,
+    this.isActive = false,
+  });
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -32,6 +38,15 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     widget.session.addListener(_update);
     _tabController = TabController(length: 2, vsync: this);
     _loadData();
+  }
+
+  @override
+  void didUpdateWidget(ProfileScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Refresh when tab becomes active
+    if (widget.isActive && !oldWidget.isActive) {
+      _loadData();
+    }
   }
 
   @override
@@ -61,10 +76,22 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
       }
     } catch (e) {
       if (mounted) {
+        if (e is DioException && (e.response?.statusCode == 401 || e.response?.statusCode == 403)) {
+           widget.session.logout();
+           return; 
+        }
+
+        String msg = "Failed to load data. Please try again.";
+        if (e is DioException) {
+           if (e.type == DioExceptionType.connectionTimeout || e.type == DioExceptionType.connectionError) {
+             msg = "Please check your internet connection.";
+           } else if (e.response?.statusCode == 500) {
+             msg = "Server is currently unavailable.";
+           }
+        }
+
         setState(() {
-          _error = e is DioException
-              ? (e.response?.data?['detail']?.toString() ?? "Failed to load data")
-              : "Failed to load data";
+          _error = msg;
           _loading = false;
         });
       }
@@ -172,22 +199,42 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _isDark ? const Color(0xFF111827) : Colors.grey[50],
-      floatingActionButton: const SupportFloatingButton(),
-      floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(_error!, style: const TextStyle(color: Colors.red)),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _loadData,
-                        child: const Text("Retry"),
-                      ),
-                    ],
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.cloud_off, size: 48, color: Colors.grey[400]),
+                        const SizedBox(height: 16),
+                        Text(
+                          "Unavailable",
+                          style: TextStyle(
+                            fontSize: 20, 
+                            fontWeight: FontWeight.bold,
+                            color: _isDark ? Colors.white : Colors.blueGrey,
+                          )
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _error!, 
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey[500])
+                        ),
+                        const SizedBox(height: 24),
+                        ElevatedButton.icon(
+                          onPressed: _loadData,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text("Retry"),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 )
               : Column(
@@ -220,14 +267,25 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                     Image.asset(
+                                    Image.asset(
                                       'assets/images/logo.png',
                                       height: 32,
                                     ),
-                                    IconButton(
-                                      onPressed: _showSettingsModal,
-                                      icon: Icon(Icons.settings, color: _isDark ? Colors.white : Colors.black87),
-                                      tooltip: 'Settings',
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        GlobalSupportButton(isDark: _isDark),
+                                        const SizedBox(width: 8),
+                                        IconButton(
+                                          visualDensity: VisualDensity.compact,
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(),
+                                          style: IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                                          onPressed: _showSettingsModal,
+                                          icon: Icon(Icons.settings, color: _isDark ? Colors.white : Colors.black87),
+                                          tooltip: 'Settings',
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
@@ -574,12 +632,18 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
               fontWeight: FontWeight.w500,
             ),
           ),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 15,
-              color: valueColor ?? defaultValueColor,
-              fontWeight: (valueColor != null || boldValue) ? FontWeight.bold : FontWeight.w600,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 15,
+                color: valueColor ?? defaultValueColor,
+                fontWeight: (valueColor != null || boldValue) ? FontWeight.bold : FontWeight.w600,
+              ),
             ),
           ),
         ],

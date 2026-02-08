@@ -57,3 +57,34 @@ class OperatorAssignment(TimeStampedUUIDModel):
     
     def __str__(self):
         return f"{self.operator.username} - {self.shift_center} ({self.role.name})"
+
+class AssignmentTask(TimeStampedUUIDModel):
+    assignment = models.ForeignKey('assignments.OperatorAssignment', on_delete=models.CASCADE, related_name='tasks')
+    shift_center_task = models.ForeignKey('operations.ShiftCenterTask', on_delete=models.PROTECT, related_name='assignment_tasks')
+    
+    STATUS_CHOICES = (
+        ('PENDING', 'Pending'),
+        ('COMPLETED', 'Completed'),
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    
+    # Evidence (Legacy single file)
+    attachment = models.FileField(upload_to='task_evidence/', null=True, blank=True)
+    response_data = models.TextField(null=True, blank=True)
+    
+    completed_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        db_table = 'assignment_task'
+        unique_together = [['assignment', 'shift_center_task']]
+        
+    def __str__(self):
+        return f"{self.shift_center_task.task_name} - {self.status}"
+
+class AssignmentTaskEvidence(TimeStampedUUIDModel):
+    task = models.ForeignKey(AssignmentTask, on_delete=models.CASCADE, related_name='evidence')
+    file = models.FileField(upload_to='task_evidence/')
+    media_type = models.CharField(max_length=20, choices=(('PHOTO','Photo'),('VIDEO','Video')), default='PHOTO')
+    
+    class Meta:
+        db_table = 'assignment_task_evidence'
