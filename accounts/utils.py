@@ -48,12 +48,11 @@ def send_onboarding_request_whatsapp(mobile: str, name: str) -> dict:
         name = "Operator"
 
     params = {
-        "authkey": "877f65eb773cee5d",
+        "authkey": settings.AUTHKEY_API_KEY,
         "mobile": mobile,
         "country_code": "91",
-        "company": "seQRview",
         "wid": "9848",
-        "name": name, 
+        # "name": name,  # Removed: might confuse gateway if not mapped
         "1": name, # Mapping Name to variable {1}
     }
 
@@ -75,7 +74,7 @@ def send_assignment_notification_whatsapp(mobile: str, role: str) -> dict:
     base_url = "https://api.authkey.io/request"
     
     params = {
-        "authkey": "877f65eb773cee5d",
+        "authkey": settings.AUTHKEY_API_KEY,
         "mobile": mobile,
         "country_code": "91",
         "wid": "9718",

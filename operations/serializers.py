@@ -9,18 +9,49 @@ class ExamSerializer(serializers.ModelSerializer):
     created_by_name = serializers.ReadOnlyField(source='created_by.full_name')
     created_by_role = serializers.ReadOnlyField(source='created_by.user_type')
 
+    is_locked = serializers.BooleanField(read_only=True)
+
     class Meta:
         model = Exam
         fields = '__all__'
-        read_only_fields = ('uid', 'created_at', 'updated_at', 'created_by', 'updated_by')
+        read_only_fields = ('uid', 'created_at', 'updated_at', 'created_by', 'updated_by', 'is_locked')
+
+    def validate(self, attrs):
+        if self.instance and self.instance.is_locked:
+            raise serializers.ValidationError(
+                f"Cannot modify exam '{self.instance.name}'. It is locked because the end date has passed."
+            )
+        return attrs
 
 class ShiftSerializer(serializers.ModelSerializer):
     exam = serializers.SlugRelatedField(slug_field='uid', queryset=Exam.objects.all())
+    centers_count = serializers.IntegerField(read_only=True)
+
+    is_locked = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Shift
         fields = '__all__'
-        read_only_fields = ('uid', 'created_at', 'updated_at', 'created_by', 'updated_by')
+        read_only_fields = ('uid', 'created_at', 'updated_at', 'created_by', 'updated_by', 'centers_count', 'is_locked')
+
+    def validate(self, attrs):
+        # 1. Check if Exam is Locked
+        exam = attrs.get('exam')
+        if not exam and self.instance:
+            exam = self.instance.exam
+            
+        if exam and exam.is_locked:
+            raise serializers.ValidationError(
+                f"Cannot modify shift. The exam '{exam.name}' is locked (past end date)."
+            )
+            
+        # 2. Check if Shift ITSELF is Locked (for updates)
+        if self.instance and self.instance.is_locked:
+             raise serializers.ValidationError(
+                f"Cannot modify this shift. It is locked because the shift time has passed."
+            )
+            
+        return attrs
 
 class ExamCenterSerializer(serializers.ModelSerializer):
     class Meta:
@@ -36,6 +67,18 @@ class ShiftCenterSerializer(serializers.ModelSerializer):
         model = ShiftCenter
         fields = '__all__'
         read_only_fields = ('uid', 'created_at', 'updated_at')
+
+    def validate(self, attrs):
+        # Check if Shift is locked when creating/updating shift center
+        shift = attrs.get('shift')
+        if not shift and self.instance:
+            shift = self.instance.shift
+            
+        if shift and shift.is_locked:
+             raise serializers.ValidationError(
+                f"Cannot modify centers. The shift '{shift.shift_code}' is locked (past end time)."
+            )
+        return attrs
 
 class ShiftCenterTaskSerializer(serializers.ModelSerializer):
     shift_center = serializers.SlugRelatedField(slug_field='uid', queryset=ShiftCenter.objects.all())

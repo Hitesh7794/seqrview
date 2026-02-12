@@ -64,6 +64,16 @@ class Exam(TimeStampedUUIDModel):
     def __str__(self):
         return f"{self.name} ({self.exam_code})"
 
+    @property
+    def is_locked(self):
+        """
+        Locks the exam if the end date has passed.
+        """
+        if self.exam_end_date:
+            from django.utils import timezone
+            return self.exam_end_date < timezone.now().date()
+        return False
+
     def save(self, *args, **kwargs):
         is_new = self._state.adding
         super().save(*args, **kwargs)
@@ -152,6 +162,32 @@ class Shift(TimeStampedUUIDModel):
     
     def __str__(self):
         return f"{self.exam.name} - {self.shift_code} ({self.work_date})"
+
+    @property
+    def is_locked(self):
+        """
+        Locks the shift if the end time has passed.
+        """
+        from django.utils import timezone
+        import datetime
+        
+        # Combine work_date and end_time to get full datetime
+        # Naive datetime handling: assume input is local, compare with local now? 
+        # Better: make it timezone aware if possible, or stick to configured timezone.
+        # Django's timezone.now() is aware. self.work_date is date.
+        
+        current_datetime = timezone.now()
+        
+        # Create a datetime from work_date and end_time
+        shift_end_naive = datetime.datetime.combine(self.work_date, self.end_time)
+        
+        # Make it aware matching current_datetime's timezone if configured
+        if settings.USE_TZ:
+            shift_end_aware = timezone.make_aware(shift_end_naive, timezone.get_current_timezone())
+        else:
+            shift_end_aware = shift_end_naive
+            
+        return shift_end_aware < current_datetime
 
 
 class ExamCenter(TimeStampedUUIDModel):

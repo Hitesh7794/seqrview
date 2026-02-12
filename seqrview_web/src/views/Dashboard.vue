@@ -58,10 +58,10 @@
       <div class="lg:col-span-2">
         <div class="flex items-center justify-between mb-6">
            <h2 class="text-xl font-bold text-gray-800">Recent Exams</h2>
-           <button v-if="canManageExams" @click="$router.push('/operations/exams')" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg shadow-sm shadow-blue-200 transition-all flex items-center">
+           <!-- <button v-if="canManageExams" @click="$router.push('/operations/exams')" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg shadow-sm shadow-blue-200 transition-all flex items-center">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
               Create Exam
-           </button>
+           </button> -->
         </div>
 
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -75,62 +75,75 @@
                       <th class="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider">Created By</th>
                   </tr>
                </thead>
-               <tbody class="divide-y divide-gray-50">
-                  <tr v-for="exam in exams.slice(0, 5)" :key="exam.uid" class="hover:bg-blue-50/30 transition-colors cursor-pointer group">
-                      <!-- Exam Name & Description -->
-                      <td class="px-6 py-4">
-                          <div class="text-sm font-bold text-gray-800 group-hover:text-blue-600">{{ exam.name }}</div>
-                          <div class="text-xs text-gray-400 font-mono mt-0.5 uppercase tracking-wide">({{ exam.exam_code }})</div>
-                          <div class="text-[10px] text-gray-400 mt-1 truncate max-w-[150px]">{{ exam.description || 'No description' }}</div>
-                      </td>
-                      
-                      <!-- Client -->
-                      <td class="px-6 py-4 text-sm text-gray-700 font-medium">
-                          {{ exam.client_name || 'No Client' }}
-                      </td>
+                <tbody class="divide-y divide-gray-50">
+                   <!-- Note: exams is now the current page only, so no .slice check needed for display logic -->
+                   <tr v-for="exam in exams" :key="exam.uid" class="hover:bg-blue-50/30 transition-colors cursor-pointer group">
+                       <!-- Exam Name & Description -->
+                       <td class="px-6 py-4">
+                           <div class="text-sm font-bold text-gray-800 group-hover:text-blue-600">{{ exam.name }}</div>
+                           <div class="text-xs text-gray-400 font-mono mt-0.5 uppercase tracking-wide">({{ exam.exam_code }})</div>
+                           <div class="text-[10px] text-gray-400 mt-1 truncate max-w-[150px]">{{ exam.description || 'No description' }}</div>
+                       </td>
+                       
+                       <!-- Client -->
+                       <td class="px-6 py-4 text-sm text-gray-700 font-medium">
+                           {{ exam.client_name || 'No Client' }}
+                       </td>
 
-                      <!-- Date Range -->
-                      <td class="px-6 py-4 text-sm text-gray-500">
-                         {{ formatDateRange(exam.exam_start_date, exam.exam_end_date) }}
-                      </td>
+                       <!-- Date Range -->
+                       <td class="px-6 py-4 text-sm text-gray-500">
+                          {{ formatDateRange(exam.exam_start_date, exam.exam_end_date) }}
+                       </td>
 
-                      <!-- Status Badge -->
-                      <td class="px-6 py-4">
-                          <span class="px-2.5 py-1 rounded text-[10px] font-bold uppercase border min-w-[80px] text-center inline-block" :class="{
-                               'bg-green-100 text-green-700 border-green-200': exam.status === 'LIVE',
-                               'bg-blue-100 text-blue-700 border-blue-200': exam.status === 'READY',
-                               'bg-orange-100 text-orange-700 border-orange-200': exam.status === 'CONFIGURING',
-                               'bg-gray-100 text-gray-600 border-gray-200': exam.status === 'DRAFT' || exam.status === 'COMPLETED'
-                           }">{{ formatStatus(exam.status) }}</span>
-                      </td>
+                       <!-- Status Badge -->
+                       <td class="px-6 py-4">
+                           <span class="px-2.5 py-1 rounded text-[10px] font-bold uppercase border min-w-[80px] text-center inline-block" :class="{
+                                'bg-green-100 text-green-700 border-green-200': !exam.is_locked && exam.status === 'LIVE',
+                                'bg-blue-100 text-blue-700 border-blue-200': !exam.is_locked && exam.status === 'READY',
+                                'bg-orange-100 text-orange-700 border-orange-200': !exam.is_locked && exam.status === 'CONFIGURING',
+                                'bg-gray-100 text-gray-600 border-gray-200': exam.is_locked || ['DRAFT', 'COMPLETED', 'ARCHIVED', 'CANCELLED'].includes(exam.status)
+                            }">{{ exam.is_locked ? 'Completed' : formatStatus(exam.status) }}</span>
+                       </td>
 
-                      <!-- Created By -->
-                      <td class="px-6 py-4 flex items-center">
-                          <div class="h-8 w-8 rounded-full bg-orange-100 text-orange-600 text-xs font-bold flex items-center justify-center mr-3 border border-orange-200">
-                             {{ (exam.created_by_name || exam.created_by_username || 'A').charAt(0).toUpperCase() }}
-                          </div>
-                          <div>
-                              <div class="text-sm font-medium text-gray-900">{{ exam.created_by_name || exam.created_by_username || 'Admin' }}</div>
-                              <div class="text-[10px] text-gray-400 capitalize">{{ (exam.created_by_role || 'Creator').toLowerCase() }}</div>
-                          </div>
-                      </td>
-                  </tr>
-                  <!-- Empty State -->
-                  <tr v-if="!exams.length && !isExamsLoading">
-                      <td colspan="5" class="px-6 py-12 text-center text-gray-400 text-sm">No recent exams found. Create one to get started.</td>
-                  </tr>
-                  <tr v-if="isExamsLoading">
-                      <td colspan="5" class="px-6 py-12 text-center text-indigo-500 text-sm">Loading exams data...</td>
-                  </tr>
-               </tbody>
-           </table>
-           <div class="p-4 border-t border-gray-50 bg-gray-50/30 flex justify-between items-center text-xs text-gray-500">
-               <span>Showing {{ Math.min(exams.length, 5) }} of {{ exams.length }} exams</span>
-               <div class="flex space-x-2">
-                   <button class="w-8 h-8 rounded border border-gray-200 flex items-center justify-center bg-white hover:border-blue-300 hover:text-blue-600 transition-colors"><</button>
-                   <button class="w-8 h-8 rounded border border-gray-200 flex items-center justify-center bg-white hover:border-blue-300 hover:text-blue-600 transition-colors">></button>
-               </div>
-           </div>
+                       <!-- Created By -->
+                       <td class="px-6 py-4 flex items-center">
+                           <div class="h-8 w-8 rounded-full bg-orange-100 text-orange-600 text-xs font-bold flex items-center justify-center mr-3 border border-orange-200">
+                              {{ (exam.created_by_name || exam.created_by_username || 'A').charAt(0).toUpperCase() }}
+                           </div>
+                           <div>
+                               <div class="text-sm font-medium text-gray-900">{{ exam.created_by_name || exam.created_by_username || 'Admin' }}</div>
+                               <div class="text-[10px] text-gray-400 capitalize">{{ (exam.created_by_role || 'Creator').toLowerCase() }}</div>
+                           </div>
+                       </td>
+                   </tr>
+                   <!-- Empty State -->
+                   <tr v-if="!exams.length && !isExamsLoading">
+                       <td colspan="5" class="px-6 py-12 text-center text-gray-400 text-sm">No recent exams found. Create one to get started.</td>
+                   </tr>
+                   <tr v-if="isExamsLoading">
+                       <td colspan="5" class="px-6 py-12 text-center text-indigo-500 text-sm">Loading exams data...</td>
+                   </tr>
+                </tbody>
+            </table>
+            <div class="p-4 border-t border-gray-50 bg-gray-50/30 flex justify-between items-center text-xs text-gray-500">
+                <span>Showing {{ (currentPage - 1) * pageSize + 1 }} - {{ Math.min(currentPage * pageSize, totalExamsCount) }} of {{ totalExamsCount }} exams</span>
+                <div class="flex space-x-2">
+                    <button 
+                        @click="prevPage"
+                        :disabled="currentPage === 1"
+                        class="w-8 h-8 rounded border border-gray-200 flex items-center justify-center bg-white hover:border-blue-300 hover:text-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        &lt;
+                    </button>
+                    <button 
+                        @click="nextPage"
+                        :disabled="currentPage * pageSize >= totalExamsCount"
+                        class="w-8 h-8 rounded border border-gray-200 flex items-center justify-center bg-white hover:border-blue-300 hover:text-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        &gt;
+                    </button>
+                </div>
+            </div>
         </div>
       </div>
 
@@ -254,11 +267,11 @@
                    <div v-else class="space-y-4">
                        <div v-for="exam in exams" :key="exam.uid" class="bg-white rounded-xl p-4 shadow-sm border border-gray-100 hover:shadow-md transition-shadow group relative overflow-hidden">
                            <div class="absolute left-0 top-0 bottom-0 w-1" :class="{
-                               'bg-green-500': exam.status === 'LIVE',
-                               'bg-blue-500': exam.status === 'READY',
-                               'bg-yellow-500': exam.status === 'CONFIGURING',
-                               'bg-gray-300': exam.status === 'DRAFT' || exam.status === 'COMPLETED'
-                           }"></div>
+                                'bg-green-500': !exam.is_locked && exam.status === 'LIVE',
+                                'bg-blue-500': !exam.is_locked && exam.status === 'READY',
+                                'bg-yellow-500': !exam.is_locked && exam.status === 'CONFIGURING',
+                                'bg-gray-300': exam.is_locked || ['DRAFT', 'COMPLETED', 'ARCHIVED', 'CANCELLED'].includes(exam.status)
+                            }"></div>
                            
                            <div class="flex justify-between items-start mb-2 pl-2">
                                <div>
@@ -266,11 +279,11 @@
                                    <h3 class="text-base font-bold text-gray-800 group-hover:text-purple-700 transition-colors">{{ exam.name }}</h3>
                                </div>
                                <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase border" :class="{
-                                   'bg-green-50 text-green-700 border-green-100': exam.status === 'LIVE',
-                                   'bg-blue-50 text-blue-700 border-blue-100': exam.status === 'READY',
-                                   'bg-yellow-50 text-yellow-700 border-yellow-100': exam.status === 'CONFIGURING',
-                                   'bg-gray-100 text-gray-600 border-gray-200': exam.status === 'DRAFT' || exam.status === 'COMPLETED'
-                               }">{{ formatStatus(exam.status) }}</span>
+                                   'bg-green-50 text-green-700 border-green-100': !exam.is_locked && exam.status === 'LIVE',
+                                   'bg-blue-50 text-blue-700 border-blue-100': !exam.is_locked && exam.status === 'READY',
+                                   'bg-yellow-50 text-yellow-700 border-yellow-100': !exam.is_locked && exam.status === 'CONFIGURING',
+                                   'bg-gray-100 text-gray-600 border-gray-200': exam.is_locked || ['DRAFT', 'COMPLETED', 'ARCHIVED', 'CANCELLED'].includes(exam.status)
+                               }">{{ exam.is_locked ? 'Completed' : formatStatus(exam.status) }}</span>
                            </div>
                            
                            <div class="pl-2 space-y-1 mt-3">
@@ -318,6 +331,11 @@ const isDrawerOpen = ref(false);
 const exams = ref([]);
 const isExamsLoading = ref(false);
 
+// Pagination State
+const currentPage = ref(1);
+const pageSize = ref(5);
+const totalExamsCount = ref(0);
+
 const openExamsDrawer = async () => {
     isDrawerOpen.value = true;
     if (exams.value.length === 0) {
@@ -329,11 +347,13 @@ const closeDrawer = () => {
     isDrawerOpen.value = false;
 };
 
-const loadExams = async () => {
+const loadExams = async (page = 1) => {
     isExamsLoading.value = true;
     try {
-        const res = await api.get('/operations/exams/');
-        exams.value = res.data.results || res.data;
+        const res = await api.get(`/operations/exams/?page=${page}&page_size=${pageSize.value}`);
+        exams.value = res.data.results || [];
+        totalExamsCount.value = res.data.count || 0;
+        currentPage.value = page;
     } catch (e) {
         console.error("Failed to load exams", e);
     } finally {
@@ -341,31 +361,51 @@ const loadExams = async () => {
     }
 };
 
+const nextPage = () => {
+    if (currentPage.value * pageSize.value < totalExamsCount.value) {
+        loadExams(currentPage.value + 1);
+    }
+};
+
+const prevPage = () => {
+    if (currentPage.value > 1) {
+        loadExams(currentPage.value - 1);
+    }
+};
+
 // Computed Stats from Exams
+// Note: Since we are paginating, we can only compute stats from the *current page* if we use `exams.value`.
+// Ideally, the backend should provide summary stats separately (which we already fetch via `statsRes`).
+// The previous logic used `exams.value` which assumed all exams were loaded. 
+// We will keep using the `stats` object loaded from `/reports/summary/` for the top cards, 
+// and update `examStats` to use that instead of computing from the list.
 const examStats = computed(() => {
-    const total = exams.value.length || 0;
-    const baseStats = {
-        draft: 0, live: 0, completed: 0, configuring: 0, total: 0,
-        draftPct: 0, livePct: 0, completedPct: 0, configuringPct: 0
-    };
+    // Check if we have backend stats, otherwise fallback to computing from *visible* exams (not ideal but safe fallback)
+    if (stats.value && (stats.value.total !== undefined || stats.value.draft !== undefined)) {
+         return {
+            draft: stats.value.draft || 0,
+            live: stats.value.live || 0,
+            completed: stats.value.completed || 0,
+            configuring: stats.value.configuring || 0,
+            total: stats.value.total_exams || stats.value.total || 0, // backend might return total_exams
+            
+            // Calculate percentages based on backend totals
+            draftPct: stats.value.total > 0 ? Math.round((stats.value.draft / stats.value.total) * 100) : 0,
+            livePct: stats.value.total > 0 ? Math.round((stats.value.live / stats.value.total) * 100) : 0,
+            completedPct: stats.value.total > 0 ? Math.round((stats.value.completed / stats.value.total) * 100) : 0,
+            configuringPct: stats.value.total > 0 ? Math.round((stats.value.configuring / stats.value.total) * 100) : 0,
+        };
+    }
 
-    if (total === 0) return baseStats;
-
-    const draft = exams.value.filter(e => e.status === 'DRAFT').length;
-    const live = exams.value.filter(e => e.status === 'LIVE').length;
-    const completed = exams.value.filter(e => e.status === 'COMPLETED').length;
-    const configuring = exams.value.filter(e => e.status === 'CONFIGURING').length;
-
+    // Fallback: Compute from whatever exams we have (only current page, so mostly inaccurate for totals but better than crashing)
+    // In a real app, ensure `/reports/summary/` returns correct totals.
+    const total = totalExamsCount.value || 0; // Use total count from pagination if available
+    
+    // We can't really compute status counts for *all* exams accurately without fetching all.
+    // So we will just display 0 or partial data if stats API fails.
     return {
-        draft,
-        live,
-        completed,
-        configuring,
-        total,
-        draftPct: Math.round((draft / total) * 100),
-        livePct: Math.round((live / total) * 100),
-        completedPct: Math.round((completed / total) * 100),
-        configuringPct: Math.round((configuring / total) * 100),
+        draft: 0, live: 0, completed: 0, configuring: 0, total: total,
+        draftPct: 0, livePct: 0, completedPct: 0, configuringPct: 0
     };
 });
 
@@ -430,15 +470,8 @@ onMounted(async () => {
         stats.value = { draft: 0, live: 0, completed: 0, configuring: 0, total: 0 };
     }
 
-    // Load Exams
-    try {
-        const examsRes = await api.get('/operations/exams/');
-        const data = examsRes.data.results || examsRes.data;
-        exams.value = Array.isArray(data) ? data : [];
-    } catch (e) {
-        console.error("Failed to load dashboard exams", e);
-        exams.value = [];
-    }
+    // Load Exams (First Page)
+    await loadExams(1);
 });
 
 const exportAttendance = async () => {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:dio/dio.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../app/session_controller.dart';
 import '../../models/assignment.dart';
 import '../../models/assignment.dart';
@@ -134,21 +135,48 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
 
   // --- Logic Helpers ---
 
+  bool _isExpired(Assignment a) {
+    if (a.shiftCenter.shift.workDate.isEmpty) return false;
+    try {
+      // Parse Work Date (YYYY-MM-DD)
+      final datePart = DateTime.parse(a.shiftCenter.shift.workDate);
+      
+      // Parse End Time (HH:MM:SS)
+      final timeParts = a.shiftCenter.shift.endTime.split(':');
+      final endDateTime = DateTime(
+        datePart.year, datePart.month, datePart.day,
+        int.parse(timeParts[0]), int.parse(timeParts[1])
+      );
+      
+      return DateTime.now().isAfter(endDateTime);
+    } catch (e) {
+      return false;
+    }
+  }
+
   List<Assignment> get _currentDuties {
-    return _assignments.where((a) => 
-      a.status == 'PENDING' || 
-      a.status == 'CONFIRMED' || 
-      a.status == 'CHECK_IN' ||
-      a.status == 'ACTIVE'
-    ).toList();
+    return _assignments.where((a) {
+      final isStatusActive = a.status == 'PENDING' || 
+                             a.status == 'CONFIRMED' || 
+                             a.status == 'CHECK_IN' ||
+                             a.status == 'ACTIVE';
+      
+      // If status is active but time expired, don't show in current
+      if (isStatusActive && _isExpired(a)) return false;
+      
+      return isStatusActive;
+    }).toList();
   }
 
   List<Assignment> get _historyDuties {
-    return _assignments.where((a) => 
-      a.status == 'COMPLETED' || 
-      a.status == 'CANCELLED' || 
-      a.status == 'REJECTED'
-    ).toList();
+    return _assignments.where((a) {
+      final isStatusCompleted = a.status == 'COMPLETED' || 
+                                a.status == 'CANCELLED' || 
+                                a.status == 'REJECTED';
+                                
+      // Show in history if completed OR if expired (even if status is technically active)
+      return isStatusCompleted || _isExpired(a);
+    }).toList();
   }
 
   Future<void> _confirmAssignment(Assignment assignment) async {
@@ -317,6 +345,23 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
     }
   }
 
+  Future<void> _launchMap(double lat, double long) async {
+    final uri = Uri.parse("https://www.google.com/maps/search/?api=1&query=$lat,$long");
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+         if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Could not open maps.")),
+          );
+        }
+      }
+    } catch (e) {
+      print("Map Launch Error: $e");
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // final isDark = Theme.of(context).brightness == Brightness.dark; // OLD
@@ -440,6 +485,11 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
     final statusColor = _getStatusColor(status);
     final isPending = status == 'PENDING';
     final isActive = status == 'ACTIVE' || status == 'CHECK_IN' || status == 'CONFIRMED';
+    
+    // Check Date for Map
+    final lat = center.latitude ?? center.masterCenter?.latitude;
+    final long = center.longitude ?? center.masterCenter?.longitude;
+    final hasLocation = lat != null && long != null;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -473,9 +523,9 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header: Status + Actions
+              // Header: Status Badge (No 3 Dots)
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -495,40 +545,81 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
                         ),
                       ),
                     ),
-                    IconButton(
-                      onPressed: () {}, // Optional menu
-                      icon: Icon(Icons.more_vert, size: 20, color: Colors.grey[600]),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
+                  ],
+                ),
+              ),
+
+              // Bold Center Name (with Map Icon if location available)
+              InkWell(
+                onTap: hasLocation ? () => _launchMap(lat!, long!) : null,
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          center.clientCenterName,
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                      ),
+                      if (hasLocation)
+                        const Padding(
+                          padding: EdgeInsets.only(left: 8.0),
+                          child: Icon(Icons.map, size: 20, color: Colors.blue),
+                        )
+                    ],
+                  ),
+                ),
+              ),
+              
+              const SizedBox(height: 4),
+
+              // Time & Date
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Icon(Icons.access_time, size: 14, color: Colors.grey[500]),
+                    const SizedBox(width: 8),
+                    Text(
+                      "${shift.startTime.substring(0, 5)} - ${shift.endTime.substring(0, 5)} | ${shift.workDate}",
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[600],
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ],
                 ),
               ),
 
-              // Title
+              const SizedBox(height: 8),
+              
+              // Role & Exam Name
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text(
-                  exam.name,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? Colors.white : Colors.black87,
-                  ),
+                child: Row(
+                  children: [
+                    Icon(Icons.badge_outlined, size: 14, color: Colors.grey[500]),
+                    const SizedBox(width: 8),
+                     Expanded(
+                      child: Text(
+                        "${assignment.role.name} • ${exam.name}",
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey[500],
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 12),
-
-              // Details Row: Date / Time
-              _buildDetailRow(
-                Icons.calendar_today_outlined,
-                "${shift.startTime.substring(0, 5)} | ${shift.endTime.substring(0, 5)}", // Simplified for now
-              ),
-              
-              // Details Row: Venue
-              _buildDetailRow(
-                Icons.location_on_outlined,
-                "${center.clientCenterName}, ${center.masterCenter?.city ?? ''}",
               ),
 
               const SizedBox(height: 16),

@@ -332,6 +332,7 @@ class _AadhaarNumberScreenState extends State<AadhaarNumberScreen> {
                              Row(
                                mainAxisSize: MainAxisSize.min,
                                children: [
+                                  GlobalSupportButton(isDark: _isDark),
                                   IconButton(
                                     onPressed: () => widget.session.toggleTheme(),
                                     icon: Icon(

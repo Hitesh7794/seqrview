@@ -60,6 +60,9 @@ class AttendanceLogViewSet(viewsets.ModelViewSet):
 
         # 2a. Time Window Validation
         shift = assignment.shift_center.shift
+        if assignment.shift_center.shift.is_locked:
+            return Response({"detail": "Shift is locked. Time period exceeded."}, status=status.HTTP_400_BAD_REQUEST)
+
         from django.utils import timezone
         from datetime import datetime, timedelta
         

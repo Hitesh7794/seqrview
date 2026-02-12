@@ -18,12 +18,25 @@ import string
 User = get_user_model()
 
 from common.mixins import ExportMixin
+from rest_framework import filters 
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.pagination import PageNumberPagination
+
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 1000
 
 class ClientViewSet(ExportMixin, viewsets.ModelViewSet):
     serializer_class = ClientSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = 'uid'
     basename = 'client'
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [filters.SearchFilter, DjangoFilterBackend, filters.OrderingFilter]
+    search_fields = ['name', 'client_code', 'primary_contact_email']
+    ordering_fields = ['name', 'created_at', 'client_code']
+    ordering = ['-created_at']
 
     def get_queryset(self):
         user = self.request.user

@@ -45,54 +45,100 @@
             </tr>
           </thead>
           <tbody class="bg-white divide-y divide-gray-200">
-            <tr v-for="client in filteredClients" :key="client.uid" class="hover:bg-gray-50 transition-colors">
-              <td class="px-6 py-4 whitespace-nowrap">
-                <div class="flex items-center">
-                  <div class="h-10 w-10 flex-shrink-0 bg-indigo-100 rounded-lg flex items-center justify-center text-indigo-600 font-bold border border-indigo-200">
-                    {{ client.name.charAt(0).toUpperCase() }}
-                  </div>
-                  <div class="ml-4">
-                    <div class="text-sm font-medium text-gray-900">{{ client.name }}</div>
-                    <div class="text-sm text-gray-500 truncate max-w-xs">{{ client.address_line1 || client.city }}</div>
-                  </div>
-                </div>
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap">
-                <span class="px-2.5 py-0.5 inline-flex text-xs leading-5 font-semibold rounded-md bg-gray-100 text-gray-800 border border-gray-200">
-                  {{ client.client_code }}
-                </span>
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                <div class="flex items-center">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-                  {{ client.primary_contact_email }}
-                </div>
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                <span class="font-mono text-xs bg-gray-50 px-2 py-1 rounded border">{{ client.admin_username || '-' }}</span>
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                <span class="font-mono text-xs text-indigo-600 font-bold bg-indigo-50 px-2 py-1 rounded border border-indigo-100 select-all">{{ client.admin_password || '-' }}</span>
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap">
-                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                  Active
-                </span>
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                <button @click="$router.push(`/masters/clients/${client.uid}/exams`)" class="text-blue-600 hover:text-blue-900 mr-3 font-bold">Exams</button>
-                <button @click="openModal(client)" class="text-indigo-600 hover:text-indigo-900 mr-3">Edit</button>
-                <button @click="deleteClient(client.uid)" class="text-red-600 hover:text-red-900">Delete</button>
-              </td>
-            </tr>
-            <tr v-if="filteredClients.length === 0">
-              <td colspan="5" class="px-6 py-10 text-center text-gray-500">
-                No clients found matching your search.
-              </td>
-            </tr>
+            <template v-if="loading">
+                <tr v-for="n in 5" :key="n" class="animate-pulse">
+                    <td class="px-6 py-4"><div class="h-4 bg-gray-200 rounded w-3/4"></div></td>
+                    <td class="px-6 py-4"><div class="h-4 bg-gray-200 rounded w-1/2"></div></td>
+                    <td class="px-6 py-4"><div class="h-4 bg-gray-200 rounded w-1/2"></div></td>
+                    <td class="px-6 py-4"><div class="h-4 bg-gray-200 rounded w-1/3"></div></td>
+                    <td class="px-6 py-4"><div class="h-4 bg-gray-200 rounded w-1/3"></div></td>
+                    <td class="px-6 py-4"><div class="h-4 bg-gray-200 rounded w-16"></div></td>
+                    <td class="px-6 py-4"><div class="h-4 bg-gray-200 rounded w-16 ml-auto"></div></td>
+                </tr>
+            </template>
+            <template v-else>
+                <tr v-for="client in clients" :key="client.uid" class="hover:bg-gray-50 transition-colors">
+                  <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="flex items-center">
+                      <div class="h-10 w-10 flex-shrink-0 bg-indigo-100 rounded-lg flex items-center justify-center text-indigo-600 font-bold border border-indigo-200">
+                        {{ client.name.charAt(0).toUpperCase() }}
+                      </div>
+                      <div class="ml-4">
+                        <div class="text-sm font-medium text-gray-900">{{ client.name }}</div>
+                        <div class="text-sm text-gray-500 truncate max-w-xs">{{ client.address_line1 || client.city }}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap">
+                    <span class="px-2.5 py-0.5 inline-flex text-xs leading-5 font-semibold rounded-md bg-gray-100 text-gray-800 border border-gray-200">
+                      {{ client.client_code }}
+                    </span>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <div class="flex items-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                      {{ client.primary_contact_email }}
+                    </div>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <span class="font-mono text-xs bg-gray-50 px-2 py-1 rounded border">{{ client.admin_username || '-' }}</span>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <span class="font-mono text-xs text-indigo-600 font-bold bg-indigo-50 px-2 py-1 rounded border border-indigo-100 select-all">{{ client.admin_password || '-' }}</span>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap">
+                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                      Active
+                    </span>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <button @click="$router.push(`/masters/clients/${client.uid}/exams`)" class="text-blue-600 hover:text-blue-900 mr-3 font-bold">Exams</button>
+                    <button @click="openModal(client)" class="text-indigo-600 hover:text-indigo-900 mr-3">Edit</button>
+                    <button @click="deleteClient(client.uid)" class="text-red-600 hover:text-red-900">Delete</button>
+                  </td>
+                </tr>
+                <tr v-if="clients.length === 0 && !loading">
+                  <td colspan="7" class="px-6 py-10 text-center text-gray-500">
+                    No clients found matching your search.
+                  </td>
+                </tr>
+            </template>
           </tbody>
         </table>
       </div>
+      <!-- Pagination Footer -->
+        <div class="bg-gray-50 px-6 py-4 border-t border-gray-100 flex items-center justify-between">
+            <span class="text-xs text-gray-500">
+                Showing <span class="font-bold text-gray-700">{{ showingStart }}</span> to <span class="font-bold text-gray-700">{{ showingEnd }}</span> of <span class="font-bold text-gray-700">{{ totalClients }}</span> results
+            </span>
+            <div class="flex items-center gap-4">
+                <div class="flex items-center gap-2">
+                    <span class="text-xs text-gray-500">Rows per page:</span>
+                    <select v-model="pageSize" @change="loadClients(1)" class="text-xs border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 bg-white py-1 pl-2 pr-6">
+                        <option :value="10">10</option>
+                        <option :value="25">25</option>
+                        <option :value="50">50</option>
+                        <option :value="100">100</option>
+                    </select>
+                </div>
+                <div class="flex gap-2">
+                    <button 
+                        @click="loadClients(currentPage - 1)" 
+                        :disabled="currentPage === 1 || loading"
+                        class="px-3 py-1 text-xs font-medium rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                        Previous
+                    </button>
+                    <button 
+                        @click="loadClients(currentPage + 1)" 
+                        :disabled="paramsNext === null || loading"
+                        class="px-3 py-1 text-xs font-medium rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                        Next
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Add/Edit Modal -->
@@ -152,9 +198,18 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, reactive } from 'vue';
+import { ref, onMounted, computed, reactive, watch } from 'vue';
 import api from '../../api/axios';
 import BaseModal from '../../components/BaseModal.vue';
+
+// Simple debounce implementation
+const debounce = (fn, delay) => {
+    let timeoutId;
+    return (...args) => {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => fn(...args), delay);
+    };
+};
 
 const clients = ref([]);
 const searchQuery = ref('');
@@ -164,6 +219,13 @@ const editingId = ref(null);
 const showCredentialsModal = ref(false);
 const createdCredentials = ref({ username: '', password: '' });
 
+// Pagination
+const loading = ref(false);
+const currentPage = ref(1);
+const pageSize = ref(10);
+const totalClients = ref(0);
+const paramsNext = ref(null);
+
 const form = reactive({
   name: '',
   client_code: '',
@@ -171,26 +233,46 @@ const form = reactive({
   address_line1: ''
 });
 
-const filteredClients = computed(() => {
-  if (!searchQuery.value) return clients.value;
-  const q = searchQuery.value.toLowerCase();
-  return clients.value.filter(c => 
-    c.name.toLowerCase().includes(q) || 
-    c.client_code?.toLowerCase().includes(q) ||
-    c.primary_contact_email?.toLowerCase().includes(q)
-  );
-});
+const showingStart = computed(() => totalClients.value === 0 ? 0 : (currentPage.value - 1) * pageSize.value + 1);
+const showingEnd = computed(() => Math.min(currentPage.value * pageSize.value, totalClients.value));
 
-const loadClients = async () => {
+const loadClients = async (page = 1) => {
+    loading.value = true;
     try {
-        const res = await api.get('/masters/clients/');
-        clients.value = res.data.results || res.data;
+        let url = `/masters/clients/?page=${page}&page_size=${pageSize.value}`;
+        if (searchQuery.value) {
+            url += `&search=${searchQuery.value}`;
+        }
+        
+        const res = await api.get(url);
+        
+        if (res.data.results) {
+            clients.value = res.data.results;
+            totalClients.value = res.data.count || 0;
+            paramsNext.value = res.data.next;
+            currentPage.value = page;
+        } else {
+            // Fallback if backend pagination not enabled or different format
+            clients.value = res.data;
+            totalClients.value = res.data.length || 0;
+        }
     } catch (e) {
         console.error("Failed to load clients", e);
+    } finally {
+        loading.value = false;
     }
 };
 
-onMounted(loadClients);
+// Debounce search
+const debouncedSearch = debounce(() => {
+    loadClients(1);
+}, 300);
+
+watch(searchQuery, () => {
+    debouncedSearch();
+});
+
+onMounted(() => loadClients(1));
 
 const openModal = (client = null) => {
   if (client) {
@@ -234,7 +316,7 @@ const saveClient = async () => {
                 showCredentialsModal.value = true;
             }
         }
-        await loadClients();
+        await loadClients(currentPage.value);
     } catch (e) {
         console.error("Failed to save client", e);
         alert("Failed to save client. Please check the inputs.");
@@ -245,7 +327,7 @@ const deleteClient = async (uid) => {
     if (!confirm('Are you sure you want to delete this client?')) return;
     try {
         await api.delete(`/masters/clients/${uid}/`);
-        await loadClients();
+        await loadClients(currentPage.value);
     } catch (e) {
         console.error("Failed to delete client", e);
         alert("Failed to delete client.");

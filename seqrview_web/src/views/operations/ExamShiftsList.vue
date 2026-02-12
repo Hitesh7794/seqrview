@@ -23,7 +23,8 @@
         />
         <button 
             @click="openModal()"
-            class="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-sm"
+            :disabled="exam?.is_locked"
+            class="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
         >
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -34,58 +35,80 @@
     </div>
 
     <!-- Shifts List -->
-    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div v-if="loading" class="p-8 text-center text-gray-500 animate-pulse">
-            Loading shifts...
+    <div v-if="loading" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div v-for="n in 3" :key="n" class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 animate-pulse h-48"></div>
+    </div>
+    
+    <div v-else-if="shifts.length === 0" class="bg-white rounded-2xl p-12 text-center shadow-sm border border-gray-100">
+        <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-indigo-50 mb-4">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
         </div>
-        <table v-else class="min-w-full divide-y divide-gray-100">
-            <thead class="bg-gray-50/50">
-                <tr>
-                    <th class="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-500">Shift Name</th>
-                    <th class="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-500">Date</th>
-                    <th class="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-500">Time</th>
-                    <th class="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-500">Centers</th>
-                    <th class="px-6 py-4 text-right text-[10px] font-black uppercase tracking-widest text-gray-500">Actions</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-100 bg-white">
-                <tr v-for="shift in shifts" :key="shift.uid" class="hover:bg-indigo-50/20 transition-colors group">
-                    <td class="px-6 py-4">
-                        <div class="font-bold text-gray-900">{{ shift.name }}</div>
-                    </td>
-                     <td class="px-6 py-4 text-sm text-gray-700">
-                        {{ new Date(shift.work_date).toLocaleDateString() }}
-                    </td>
-                     <td class="px-6 py-4 text-sm text-gray-700 font-mono">
-                        {{ shift.start_time }} - {{ shift.end_time }}
-                    </td>
-                    <td class="px-6 py-4">
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                           {{ shift.centers_count || 0 }} Centers
-                        </span>
-                    </td>
-                    <td class="px-6 py-4 text-right">
-                         <button 
-                            @click="$router.push(`/operations/shifts/${shift.uid}/centers`)"
-                            class="text-indigo-600 hover:text-indigo-800 text-sm font-bold mr-4"
-                        >
-                            Manage Centers
-                        </button>
-                        <button 
-                            @click="deleteShift(shift)"
-                            class="text-red-500 hover:text-red-700 text-sm font-bold"
-                        >
-                            Delete
-                        </button>
-                    </td>
-                </tr>
-                <tr v-if="shifts.length === 0">
-                    <td colspan="5" class="px-6 py-12 text-center text-gray-400 italic">
-                        No shifts configured for this exam.
-                    </td>
-                </tr>
-            </tbody>
-        </table>
+        <h3 class="text-lg font-bold text-gray-900 mb-1">No Shifts Configured</h3>
+        <p class="text-gray-500 mb-6">Create the first shift to get started.</p>
+        <button 
+            @click="openModal()"
+            :disabled="exam?.is_locked"
+            class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+            Add Shift
+        </button>
+    </div>
+
+    <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div v-for="shift in shifts" :key="shift.uid" class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow group relative overflow-hidden">
+            <div class="absolute top-0 right-0 w-24 h-24 bg-indigo-50 rounded-bl-full -mr-12 -mt-12 transition-transform group-hover:scale-110"></div>
+            
+            <div class="relative z-10">
+                <div class="flex justify-between items-start mb-4">
+                    <div>
+                         <h3 class="text-lg font-black text-gray-900 line-clamp-1" :title="shift.name">{{ shift.name }}</h3>
+                        <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mt-1">
+                            {{ shift.shift_code || 'No Code' }}
+                            <span v-if="shift.is_locked" class="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-red-100 text-red-700">LOCKED</span>
+                        </p>
+                    </div>
+                     <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 font-bold text-xs" title="Centers Count">
+                        {{ shift.centers_count || 0 }}
+                    </span>
+                </div>
+                
+                <div class="space-y-3 mb-6">
+                    <div class="flex items-center text-sm text-gray-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <span class="font-medium">{{ new Date(shift.work_date).toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }) }}</span>
+                    </div>
+                    <div class="flex items-center text-sm text-gray-600">
+                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span class="font-mono bg-gray-50 px-2 py-0.5 rounded text-xs">{{ shift.start_time }} - {{ shift.end_time }}</span>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2 pt-4 border-t border-gray-100">
+                    <button 
+                        @click="$router.push(`/operations/shifts/${shift.uid}/centers`)"
+                        class="flex-1 py-2 px-3 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-bold hover:bg-indigo-100 transition-colors text-center"
+                    >
+                        Manage Centers
+                    </button>
+                    <button 
+                        @click="deleteShift(shift)"
+                        :disabled="shift.is_locked || exam?.is_locked"
+                        class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
+                        title="Delete Shift"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Create Shift Modal -->
@@ -101,7 +124,14 @@
             </div>
              <div>
                 <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Date</label>
-                <input v-model="form.work_date" type="date" required class="w-full px-4 py-2 bg-gray-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500">
+                <input 
+                    v-model="form.work_date" 
+                    type="date" 
+                    required 
+                    :min="exam?.exam_start_date" 
+                    :max="exam?.exam_end_date"
+                    class="w-full px-4 py-2 bg-gray-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500"
+                >
             </div>
              <div class="grid grid-cols-2 gap-4">
                 <div>
@@ -193,6 +223,17 @@ const saveShift = async () => {
     if (form.value.end_time <= form.value.start_time) {
         error.value = "End time must be after start time";
         return;
+    }
+
+    if (exam.value) {
+        if (exam.value.exam_start_date && form.value.work_date < exam.value.exam_start_date) {
+             error.value = `Date cannot be before Exam Start Date (${exam.value.exam_start_date})`;
+             return;
+        }
+        if (exam.value.exam_end_date && form.value.work_date > exam.value.exam_end_date) {
+             error.value = `Date cannot be after Exam End Date (${exam.value.exam_end_date})`;
+             return;
+        }
     }
 
     saving.value = true;

@@ -11,13 +11,14 @@
         <div>
             <div class="flex items-center gap-3">
                 <h1 class="text-3xl font-black text-gray-900 tracking-tight">{{ exam.name }}</h1>
-                <span class="px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-full border shadow-sm"
+                  <span class="px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-full border shadow-sm"
                       :class="{
-                          'bg-green-50 text-green-700 border-green-200': exam.status === 'LIVE',
-                          'bg-orange-50 text-orange-700 border-orange-200': exam.status === 'CONFIGURING' || exam.status === 'DRAFT',
-                          'bg-blue-50 text-blue-700 border-blue-200': exam.status === 'READY'
+                          'bg-green-50 text-green-700 border-green-200': !exam.is_locked && exam.status === 'LIVE',
+                          'bg-orange-50 text-orange-700 border-orange-200': !exam.is_locked && (exam.status === 'CONFIGURING' || exam.status === 'DRAFT'),
+                          'bg-blue-50 text-blue-700 border-blue-200': !exam.is_locked && exam.status === 'READY',
+                          'bg-gray-100 text-gray-600 border-gray-200': exam.is_locked || ['COMPLETED', 'ARCHIVED', 'CANCELLED'].includes(exam.status)
                       }">
-                      {{ exam.status }}
+                      {{ exam.is_locked ? 'Completed' : exam.status }}
                 </span>
             </div>
             <div class="flex items-center gap-2 mt-2 text-gray-400 font-medium">

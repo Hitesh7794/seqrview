@@ -1,19 +1,24 @@
-from rest_framework import viewsets, permissions, status
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from django.utils import timezone
-from django.db import transaction
-from django.http import HttpResponse
-from django.contrib.auth import get_user_model
-import csv
-import io
+from rest_framework import viewsets, permissions, status, filters
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.pagination import PageNumberPagination
 
+from common.mixins import ExportMixin
+from .serializers import OperatorAssignmentSerializer, AssignmentTaskSerializer, OperatorAssignmentCreateSerializer
 from .models import OperatorAssignment, AssignmentTask
 from operations.models import ShiftCenter
 from masters.models import RoleMaster
-from .serializers import OperatorAssignmentSerializer, AssignmentTaskSerializer, OperatorAssignmentCreateSerializer
+from django.utils import timezone
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from django.contrib.auth import get_user_model
+from django.db import transaction
+import csv
+import io
 
-from common.mixins import ExportMixin
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 1000
 
 class OperatorAssignmentViewSet(ExportMixin, viewsets.ModelViewSet):
     queryset = OperatorAssignment.objects.all()
@@ -21,6 +26,13 @@ class OperatorAssignmentViewSet(ExportMixin, viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = 'uid'
     basename = 'operator_assignment'
+    
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [filters.SearchFilter, DjangoFilterBackend, filters.OrderingFilter]
+    search_fields = ['operator__username', 'operator__first_name', 'operator__last_name', 'operator__mobile_primary']
+    filterset_fields = ['status', 'assignment_type', 'role']
+    ordering_fields = ['assigned_at', 'status']
+    ordering = ['-assigned_at']
 
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
@@ -30,7 +42,7 @@ class OperatorAssignmentViewSet(ExportMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         if user.is_staff or getattr(user, 'user_type', '') == 'INTERNAL_ADMIN':
-            queryset = OperatorAssignment.objects.all()
+            queryset = OperatorAssignment.objects.select_related('operator', 'role', 'shift_center').all()
             operator_id = self.request.query_params.get('operator', None)
             if operator_id:
                 queryset = queryset.filter(operator__uid=operator_id)
@@ -158,6 +170,10 @@ class OperatorAssignmentViewSet(ExportMixin, viewsets.ModelViewSet):
         if assignment.status != 'PENDING':
              return Response({"error": "Assignment already processed"}, status=status.HTTP_400_BAD_REQUEST)
              
+        # Check if Shift is Locked
+        if assignment.shift_center.shift.is_locked:
+            return Response({"error": "Cannot confirm. The shift time has passed."}, status=status.HTTP_400_BAD_REQUEST)
+
         assignment.status = 'CONFIRMED'
         assignment.confirmed_at = timezone.now()
         assignment.save()

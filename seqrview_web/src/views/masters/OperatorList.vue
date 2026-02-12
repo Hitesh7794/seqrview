@@ -1,40 +1,109 @@
 <template>
   <div class="space-y-6">
-    <div class="flex justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-      <div>
-        <h1 class="text-2xl font-black text-gray-900 tracking-tight">Operator Workforce</h1>
-        <p class="text-sm text-gray-500 mt-1">Manage all field operators and verification requests.</p>
-      </div>
-      <div class="flex items-center gap-3">
-          <button 
-            @click="openBulkRequestModal"
-            class="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-sm"
-          >
-            <svg xmlns="http://www.w3.org/2000/xl" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-            </svg>
-            Bulk Request
-          </button>
-          <button 
-            @click="openRequestModal"
-            class="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-all shadow-sm"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-            </svg>
-            Request Operator
-          </button>
-          <div class="relative">
-              <input 
-                v-model="search" 
-                type="text" 
-                placeholder="Search mobile or name..." 
-                class="pl-10 pr-4 py-2 bg-gray-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500 w-64"
-              >
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 absolute left-3 top-2.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
+    <!-- Metrics Row -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+            <div class="h-12 w-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+            </div>
+            <div>
+                <div class="text-2xl font-black text-gray-900">{{ totalOperatorsCount }}</div>
+                <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Operators</div>
+            </div>
+        </div>
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+            <div class="h-12 w-12 rounded-xl bg-green-50 text-green-600 flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </div>
+            <div>
+                <div class="text-2xl font-black text-gray-900">{{ verifiedCount }}</div>
+                <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Verified KYC</div>
+            </div>
+        </div>
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+            <div class="h-12 w-12 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </div>
+            <div>
+                <div class="text-2xl font-black text-gray-900">{{ pendingCount }}</div>
+                <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Pending Requests</div>
+            </div>
+        </div>
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+            <div class="h-12 w-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </div>
+            <div>
+                <div class="text-2xl font-black text-gray-900">{{ activeToday }}</div>
+                <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Active Today</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Controls Header -->
+    <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-6">
+      <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <h1 class="text-2xl font-black text-gray-900 tracking-tight">Operator Workforce</h1>
+            <p class="text-sm text-gray-500 mt-1">Manage all field operators and verification requests from one central hub.</p>
           </div>
+          
+          <div class="flex flex-wrap items-center gap-3">
+             <!-- Filters -->
+             <div class="flex gap-2">
+                <select v-model="profileStatusFilter" @change="handleFilterChange" class="bg-gray-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500 py-2.5 px-3 text-gray-600 font-medium">
+                    <option value="">Profile: All</option>
+                    <option v-for="s in profileStatusOptions" :key="s" :value="s">{{ s.replace('_', ' ') }}</option>
+                </select>
+                <select v-model="kycStatusFilter" @change="handleFilterChange" class="bg-gray-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500 py-2.5 px-3 text-gray-600 font-medium">
+                    <option value="">KYC: All</option>
+                    <option v-for="s in kycStatusOptions" :key="s" :value="s">{{ s.replace('_', ' ') }}</option>
+                </select>
+              </div>
+
+             <div class="h-8 w-px bg-gray-200 mx-1"></div>
+
+             <button 
+                @click="openBulkRequestModal"
+                class="flex items-center gap-2 px-4 py-2.5 border border-indigo-100 text-indigo-600 bg-indigo-50 rounded-xl text-sm font-bold hover:bg-indigo-100 transition-all"
+             >
+                <svg xmlns="http://www.w3.org/2000/xl" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                Bulk Request
+             </button>
+             <button 
+                @click="openRequestModal"
+                class="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-all shadow-sm shadow-blue-200"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+                Request Operator
+             </button>
+          </div>
+      </div>
+
+      <div class="relative">
+          <input 
+            v-model="search" 
+            @input="handleSearch"
+            type="text" 
+            placeholder="Search mobile, name, or ID..." 
+            class="pl-11 pr-4 py-3 bg-gray-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500 w-full md:w-96 transition-all"
+          >
+          <svg v-if="loading" class="animate-spin h-5 w-5 absolute right-3 top-3 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+          <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 absolute left-4 top-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
       </div>
     </div>
 
@@ -50,7 +119,7 @@
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-100 bg-white">
-          <tr v-for="user in filteredOperators" :key="user.uid" class="hover:bg-blue-50/20 transition-colors group">
+          <tr v-for="user in operators" :key="user.uid" class="hover:bg-blue-50/20 transition-colors group">
             <td class="px-6 py-4">
               <div class="flex items-center gap-3">
                 <div class="h-10 w-10 rounded-full bg-blue-100 border-2 border-white shadow-sm flex items-center justify-center text-blue-600 font-bold">
@@ -76,13 +145,13 @@
                 <div v-if="user.operator_profile?.verification_method" class="text-[10px] text-gray-400 mt-0.5">via {{ user.operator_profile.verification_method }}</div>
             </td>
             <td class="px-6 py-4 text-xs text-gray-400 tabular-nums">
-              {{ new Date(user.created_at).toLocaleDateString() }}
+              {{ new Date(user.updated_at).toLocaleDateString() }}
             </td>
-            <td class="px-6 py-4 text-right">
-              <div class="flex items-center justify-end gap-2">
+             <td class="px-6 py-4 text-right">
+              <div class="flex items-center justify-end gap-3">
                  <button 
                   @click="openViewModal(user)"
-                  class="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-all"
+                  class="text-gray-400 hover:text-blue-600 transition-colors"
                   title="View Details"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -92,7 +161,7 @@
                 </button>
                 <button 
                   @click="blockUser(user)"
-                  class="p-2 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-all"
+                  class="text-gray-400 hover:text-orange-600 transition-colors"
                   :title="user.status === 'BLACKLIST' ? 'Unblock' : 'Block Operator'"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -101,7 +170,7 @@
                 </button>
                 <button 
                   @click="deleteUser(user)"
-                  class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                  class="text-gray-400 hover:text-red-600 transition-colors"
                   title="Delete Operator"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -111,19 +180,63 @@
               </div>
             </td>
           </tr>
-          <tr v-if="loading">
-             <td colspan="5" class="px-6 py-20 text-center">
-                 <div class="inline-flex items-center gap-2 text-blue-500 font-bold animate-pulse">
-                     <svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                     Scanning Workforce...
-                 </div>
-             </td>
+           <tr v-if="loading && operators.length === 0">
+              <td colspan="5" class="px-6 py-20 text-center text-gray-400">
+                  <div class="flex flex-col items-center justify-center">
+                    <svg class="animate-spin h-6 w-6 text-blue-500 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    <span class="text-sm font-medium">Loading operators...</span>
+                  </div>
+              </td>
           </tr>
-          <tr v-else-if="filteredOperators.length === 0">
-             <td colspan="5" class="px-6 py-20 text-center text-gray-400 italic">No operators found matching your criteria.</td>
+          <tr v-else-if="operators.length === 0">
+              <td colspan="5" class="px-6 py-20 text-center">
+                  <div class="flex flex-col items-center justify-center text-gray-400">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 mb-3 text-gray-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                      <p class="text-sm font-medium text-gray-500">No operators found</p>
+                      <p class="text-xs mt-1">Try adjusting your filters or add a new operator.</p>
+                  </div>
+              </td>
           </tr>
         </tbody>
       </table>
+
+      <!-- Pagination Footer -->
+      <div class="bg-white px-6 py-4 border-t border-gray-100 flex items-center justify-between" v-if="totalOperators > 0">
+          <div class="text-xs text-gray-500 font-medium">
+              Showing <span class="text-gray-900 font-bold">{{ showingStart }}</span> to <span class="text-gray-900 font-bold">{{ showingEnd }}</span> of <span class="text-gray-900 font-bold">{{ totalOperators }}</span> results
+          </div>
+          
+          <div class="flex items-center gap-4">
+              <div class="flex items-center gap-2">
+                  <span class="text-xs text-gray-500">Rows per page:</span>
+                  <select v-model="pageSize" @change="loadOperators(1)" class="bg-white border border-gray-200 text-gray-700 text-xs rounded-lg focus:ring-blue-500 focus:border-blue-500 py-1 px-2 cursor-pointer hover:border-blue-500 transition-colors">
+                      <option :value="10">10</option>
+                      <option :value="25">25</option>
+                      <option :value="50">50</option>
+                      <option :value="300">300</option>
+                  </select>
+              </div>
+
+              <div class="flex gap-2">
+                  <button 
+                      @click="prevPage" 
+                      :disabled="currentPage === 1"
+                      class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-bold text-gray-600 bg-white hover:bg-gray-50 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+                  >
+                      Previous
+                  </button>
+                  <button 
+                      @click="nextPage" 
+                      :disabled="currentPage * pageSize >= totalOperators"
+                      class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-bold text-gray-600 bg-white hover:bg-gray-50 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+                  >
+                      Next
+                  </button>
+              </div>
+          </div>
+      </div>
     </div>
 
     <!-- View Operator Modal -->
@@ -148,28 +261,30 @@
             </div>
 
             <!-- Tabs Navigation -->
-            <div class="flex space-x-1 rounded-xl bg-gray-100/80 p-1 border border-gray-200">
+            <div class="flex space-x-1 rounded-xl bg-gray-100/80 p-1 border border-gray-200 relative z-10">
                 <button 
-                    @click="activeTab = 'profile'"
+                    type="button"
+                    @click="switchTab('profile')"
+                    class="w-full rounded-lg py-2.5 text-xs font-bold uppercase tracking-wide leading-5 transition-all outline-none cursor-pointer"
                     :class="[
-                        'w-full rounded-lg py-2.5 text-xs font-bold uppercase tracking-wide leading-5 transition-all outline-none',
                         activeTab === 'profile'
                         ? 'bg-white text-blue-700 shadow ring-1 ring-black/5'
-                        : 'text-gray-500 hover:bg-white/[0.12] hover:text-gray-600'
+                        : 'text-gray-500 hover:bg-white hover:text-gray-700 hover:shadow-sm'
                     ]"
                 >
                     Profile & Details
                 </button>
                 <button 
-                    @click="activeTab = 'duties'"
+                    type="button"
+                    @click="switchTab('duties')"
+                    class="w-full rounded-lg py-2.5 text-xs font-bold uppercase tracking-wide leading-5 transition-all outline-none cursor-pointer"
                     :class="[
-                        'w-full rounded-lg py-2.5 text-xs font-bold uppercase tracking-wide leading-5 transition-all outline-none',
                         activeTab === 'duties'
                         ? 'bg-white text-blue-700 shadow ring-1 ring-black/5'
-                        : 'text-gray-500 hover:bg-white/[0.12] hover:text-gray-600'
+                        : 'text-gray-500 hover:bg-white hover:text-gray-700 hover:shadow-sm'
                     ]"
                 >
-                    Duties & Assignments <span class="ml-1 bg-gray-200 px-1.5 py-0.5 rounded-full text-[10px] text-gray-600">{{ duties.length }}</span>
+                    Duties & Assignments <span class="ml-1 bg-gray-200 px-1.5 py-0.5 rounded-full text-[10px] text-gray-600">{{ duties.length || 0 }}</span>
                 </button>
             </div>
 
@@ -257,8 +372,8 @@
                     <div v-for="duty in duties" :key="duty.uid" class="p-3 bg-white border border-gray-100 rounded-xl hover:border-blue-200 transition-colors shadow-sm">
                         <div class="flex justify-between items-start mb-2">
                             <div>
-                                <h5 class="text-sm font-bold text-gray-900">{{ duty.shift_center.exam.name }}</h5>
-                                <p class="text-xs text-gray-500">{{ duty.shift_center.center.name }}</p>
+                                <h5 class="text-sm font-bold text-gray-900">{{ duty.shift_center?.exam?.exam_code || 'Unknown Exam' }}</h5>
+                                <p class="text-xs text-gray-500">{{ duty.shift_center?.exam_center?.client_center_name || duty.shift_center?.center?.name || 'Unknown Center' }}</p>
                             </div>
                             <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider"
                                 :class="{
@@ -277,11 +392,11 @@
                             </div>
                             <div>
                                 <p class="text-gray-400 uppercase text-[9px] font-bold tracking-wider">Date</p>
-                                <p class="font-medium text-gray-700">{{ new Date(duty.shift_center.shift.date).toLocaleDateString() }}</p>
+                                <p class="font-medium text-gray-700">{{ formatDate(duty.shift_center?.shift?.work_date) }}</p>
                             </div>
                              <div class="col-span-2">
                                 <p class="text-gray-400 uppercase text-[9px] font-bold tracking-wider">Time</p>
-                                <p class="font-medium text-gray-700">{{ duty.shift_center.shift.start_time }} - {{ duty.shift_center.shift.end_time }}</p>
+                                <p class="font-medium text-gray-700">{{ duty.shift_center?.shift?.start_time }} - {{ duty.shift_center?.shift?.end_time }}</p>
                             </div>
                         </div>
                     </div>
@@ -475,6 +590,9 @@ import { ref, onMounted, computed } from 'vue';
 import api from '../../api/axios';
 import BaseModal from '../../components/BaseModal.vue';
 
+const profileStatusOptions = ['DRAFT', 'PROFILE_FILLED', 'VERIFIED', 'REJECTED', 'BLACKLIST'];
+const kycStatusOptions = ['NOT_STARTED', 'OTP_SENT', 'OTP_VERIFIED', 'FACE_PENDING', 'VERIFIED', 'FAILED'];
+
 const operators = ref([]);
 const loading = ref(false);
 const search = ref('');
@@ -483,6 +601,107 @@ const duties = ref([]);
 const loadingDuties = ref(false);
 const selectedOperator = ref(null);
 const isViewModalOpen = ref(false);
+
+// Metrics
+const totalOperatorsCount = ref(0);
+const verifiedCount = ref(0);
+const pendingCount = ref(0);
+const activeToday = ref(0);
+
+// Pagination & Filtering
+const currentPage = ref(1);
+const pageSize = ref(10);
+const totalOperators = ref(0);
+const profileStatusFilter = ref('');
+const kycStatusFilter = ref('');
+
+const showingStart = computed(() => totalOperators.value === 0 ? 0 : (currentPage.value - 1) * pageSize.value + 1);
+const showingEnd = computed(() => Math.min(currentPage.value * pageSize.value, totalOperators.value));
+
+const loadMetrics = async () => {
+    try {
+        // Parallel requests for metrics
+        const [totalRes, verifiedRes, pendingRes] = await Promise.all([
+            api.get('/identity/users/?user_type=OPERATOR&page_size=1'),
+            api.get('/identity/users/?user_type=OPERATOR&operator_profile__kyc_status=VERIFIED&page_size=1'),
+            api.get('/identity/users/?user_type=OPERATOR&operator_profile__kyc_status=FACE_PENDING&page_size=1')
+        ]);
+        
+        totalOperatorsCount.value = totalRes.data.count || 0;
+        verifiedCount.value = verifiedRes.data.count || 0; 
+        pendingCount.value = pendingRes.data.count || 0;
+        
+        // For 'Active Today', we'll leave it as 0 for now as backend support is pending.
+        activeToday.value = 0; 
+
+    } catch (e) {
+        console.error("Failed to load metrics", e);
+    }
+};
+
+const loadOperators = async (page = 1) => {
+    loading.value = true;
+    try {
+        let url = `/identity/users/?user_type=OPERATOR&page=${page}&page_size=${pageSize.value}`;
+        
+        if (search.value) {
+            url += `&search=${search.value}`;
+        }
+        if (profileStatusFilter.value) {
+            url += `&operator_profile__profile_status=${profileStatusFilter.value}`;
+        }
+        if (kycStatusFilter.value) {
+            url += `&operator_profile__kyc_status=${kycStatusFilter.value}`;
+        }
+
+        const res = await api.get(url);
+        operators.value = res.data.results || [];
+        totalOperators.value = res.data.count || 0;
+        currentPage.value = page;
+    } catch (e) {
+        console.error("Failed to load operators", e);
+        operators.value = [];
+        totalOperators.value = 0;
+    } finally {
+        loading.value = false;
+    }
+};
+
+onMounted(() => {
+    loadOperators();
+    loadMetrics();
+});
+
+let searchTimeout;
+const handleSearch = () => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+        loadOperators(1);
+    }, 300);
+};
+
+const handleFilterChange = () => {
+    loadOperators(1);
+};
+
+const nextPage = () => {
+    if (currentPage.value * pageSize.value < totalOperators.value) {
+        loadOperators(currentPage.value + 1);
+    }
+};
+
+const prevPage = () => {
+    if (currentPage.value > 1) {
+        loadOperators(currentPage.value - 1);
+    }
+};
+
+
+
+const switchTab = (tab) => {
+    console.log("Switching tab to:", tab);
+    activeTab.value = tab;
+};
 
 const isRequestModalOpen = ref(false);
 const newOperatorMobile = ref('');
@@ -501,9 +720,11 @@ const loadDuties = async (operatorId) => {
     loadingDuties.value = true;
     try {
         const res = await api.get(`/assignments/?operator=${operatorId}`);
-        duties.value = res.data.results || res.data;
+        const data = res.data.results || res.data;
+        duties.value = Array.isArray(data) ? data : [];
     } catch (e) {
         console.error("Failed to load duties", e);
+        duties.value = [];
     } finally {
         loadingDuties.value = false;
     }
@@ -516,28 +737,11 @@ const openViewModal = (operator) => {
     loadDuties(operator.uid); // Fetch duties in background
 };
 
-const loadOperators = async () => {
-    loading.value = true;
-    try {
-        const res = await api.get('/identity/users/?user_type=OPERATOR');
-        const data = res.data.results || res.data;
-        operators.value = Array.isArray(data) ? data : [];
-    } catch (e) {
-        console.error("Failed to load operators", e);
-    } finally {
-        loading.value = false;
-    }
-};
 
-const filteredOperators = computed(() => {
-    if (!search.value) return operators.value;
-    const s = search.value.toLowerCase();
-    return operators.value.filter(o => 
-        o.username.toLowerCase().includes(s) || 
-        o.mobile_primary?.includes(s) || 
-        o.full_name?.toLowerCase().includes(s)
-    );
+onMounted(() => {
+    loadOperators();
 });
+
 
 const statusClass = (status) => {
     if (status === 'VERIFIED') return 'bg-green-50 text-green-700 border-green-200';
@@ -553,7 +757,12 @@ const kycDotClass = (status) => {
     return 'bg-blue-500';
 };
 
-
+const formatDate = (dateString, fallback = 'N/A') => {
+    if (!dateString) return fallback;
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return fallback;
+    return date.toLocaleDateString();
+};
 
 const closeViewModal = () => {
     isViewModalOpen.value = false;

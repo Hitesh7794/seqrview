@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../app/session_controller.dart';
 import '../../app/onboarding_stage.dart';
+import '../../widgets/global_support_button.dart';
 
 class KycMethodSelectScreen extends StatefulWidget {
   final SessionController session;
@@ -85,6 +86,7 @@ class _KycMethodSelectScreenState extends State<KycMethodSelectScreen> {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      GlobalSupportButton(isDark: _isDark),
                       IconButton(
                         onPressed: () => widget.session.toggleTheme(),
                         icon: Icon(

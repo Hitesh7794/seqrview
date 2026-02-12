@@ -24,6 +24,7 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
   String? _gender;
   String? _selectedState;
   String? _selectedDistrict;
+  String? _profileZip;
 
   bool _loading = false;
   bool _isDL = false;
@@ -55,6 +56,14 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
     final m = d.month.toString().padLeft(2, '0');
     final day = d.day.toString().padLeft(2, '0');
     return "$y-$m-$day";
+  }
+
+  // Display format (DD-MM-YYYY)
+  String _fmtDateDisplay(DateTime d) {
+    final y = d.year.toString().padLeft(4, '0');
+    final m = d.month.toString().padLeft(2, '0');
+    final day = d.day.toString().padLeft(2, '0');
+    return "$day-$m-$y";
   }
 
   String _prettyError(Object e) {
@@ -152,7 +161,7 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
       debugPrint("DEBUG: Found tempDob in initState: ${widget.session.tempDob}");
       setState(() {
          _dob = widget.session.tempDob;
-         _dobController.text = _fmtDate(_dob!);
+         _dobController.text = _fmtDateDisplay(_dob!);
          _isDL = true; // High confidence it's DL if tempDob is present
       });
     }
@@ -297,7 +306,7 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
       }
 
       if (_dob != null) {
-        _dobController.text = _fmtDate(_dob!);
+        _dobController.text = _fmtDateDisplay(_dob!);
       }
       
       // 3. Gender
@@ -316,7 +325,7 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
       
       var stateRaw = deepFind(data, stateKeys);
       var distRaw = deepFind(data, distKeys);
-      var zipRaw = deepFind(data, zipKeys);
+      var zipRaw = deepFind(data, zipKeys) ?? _profileZip;
       
       stateRaw ??= searchAllForState(data);
       _selectedState = findState(stateRaw);
@@ -366,7 +375,9 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
       if (addressParts.isNotEmpty) {
         final sorted = addressParts.toList()
           ..removeWhere((p) => p == _selectedState || p == _selectedDistrict);
-        var finalAddr = sorted.join(", ").trim();
+        // Reverse the address parts (Street first, etc.)
+        final reversed = sorted.reversed.toList();
+        var finalAddr = reversed.join(", ").trim();
         if (zipRaw != null && !finalAddr.contains(zipRaw)) finalAddr = "$finalAddr, $zipRaw";
         _address.text = finalAddr;
       }
@@ -405,6 +416,7 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
       final data = res.data as Map<String, dynamic>?;
       final method = data?['verification_method']?.toString();
       final dobStr = data?['date_of_birth']?.toString();
+      final zip = data?['current_zip']?.toString();
       
       if (mounted) {
         setState(() {
@@ -412,10 +424,18 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
           if (_isDL && dobStr != null) {
             try {
               _dob = DateTime.parse(dobStr);
-              _dobController.text = _fmtDate(_dob!);
+              _dobController.text = _fmtDateDisplay(_dob!);
             } catch (_) {
               // Ignore parse error
             }
+          }
+          
+          if (zip != null && zip.isNotEmpty) {
+             _profileZip = zip;
+             // If address is already filled (by auto-fill running earlier) but missing zip, append it
+             if (_address.text.isNotEmpty && !_address.text.contains(zip)) {
+                _address.text = "${_address.text}, $zip"; 
+             }
           }
         });
       }
@@ -436,7 +456,7 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
     if (picked != null) {
       setState(() {
         _dob = picked;
-        _dobController.text = _fmtDate(picked);
+        _dobController.text = _fmtDateDisplay(picked);
       });
     }
   }
@@ -660,7 +680,7 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
 
                     const SizedBox(height: 8),
                     Text(
-                      "Please enter your details as they appear on your ID document:",
+                      "Please confirm your details as they appear on your ID document:",
                       style: TextStyle(
                         fontSize: 16,
                         color: textSub,
@@ -717,10 +737,10 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
                               const SizedBox(height: 8),
                               DropdownButtonFormField<String>(
                                 value: _gender,
-                                items: const [
-                                  DropdownMenuItem(value: 'M', child: Text("Male")),
-                                  DropdownMenuItem(value: 'F', child: Text("Female")),
-                                  DropdownMenuItem(value: 'O', child: Text("Other")),
+                                items: [
+                                  DropdownMenuItem(value: 'M', child: Text("Male", style: TextStyle(color: textMain))),
+                                  DropdownMenuItem(value: 'F', child: Text("Female", style: TextStyle(color: textMain))),
+                                  DropdownMenuItem(value: 'O', child: Text("Other", style: TextStyle(color: textMain))),
                                 ],
                                 onChanged: (_gender != null && _hasAadhaarData) ? null : (v) => setState(() => _gender = v),
                                 style: TextStyle(color: textMain, fontSize: 16),
@@ -748,7 +768,7 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
                               const SizedBox(height: 8),
                               DropdownButtonFormField<String>(
                                 value: _selectedState,
-                                items: _states.map((s) => DropdownMenuItem(value: s, child: Text(s, style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis))).toList(),
+                                items: _states.map((s) => DropdownMenuItem(value: s, child: Text(s, style: TextStyle(fontSize: 14, color: textMain), overflow: TextOverflow.ellipsis))).toList(),
                                 onChanged: (_selectedState != null && _hasAadhaarData) ? null : (v) {
                                   setState(() {
                                     _selectedState = v;
@@ -774,7 +794,7 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
                               DropdownButtonFormField<String>(
                                 value: _selectedDistrict,
                                 items: (_selectedState == null ? <String>[] : (_districtsByState[_selectedState] ?? []))
-                                    .map((d) => DropdownMenuItem(value: d, child: Text(d, style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis))).toList(),
+                                    .map((d) => DropdownMenuItem(value: d, child: Text(d, style: TextStyle(fontSize: 14, color: textMain), overflow: TextOverflow.ellipsis))).toList(),
                                 onChanged: (_selectedDistrict != null && _hasAadhaarData) ? null : (v) => setState(() => _selectedDistrict = v),
                                 style: TextStyle(color: textMain),
                                 decoration: inputDeco("Select District"),
@@ -869,11 +889,12 @@ class _AadhaarVerifyDetailsScreenState extends State<AadhaarVerifyDetailsScreen>
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
-                  onPressed: _loading ? null : _verify,
+                  onPressed: (_loading || (_hasAadhaarData && !_consentToUseAadhaarData)) ? null : _verify,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: accentColor,
                     foregroundColor: Colors.white,
                     disabledBackgroundColor: accentColor.withOpacity(0.5),
+                    disabledForegroundColor: Colors.white.withOpacity(0.7), // Ensure visible when disabled
                     elevation: 0,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),

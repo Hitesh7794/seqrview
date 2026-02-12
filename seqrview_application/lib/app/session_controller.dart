@@ -91,6 +91,10 @@ class SessionController extends ChangeNotifier {
     stage = OnboardingStage.loading;
     notifyListeners();
 
+    // Minimum splash duration
+    await Future.delayed(const Duration(milliseconds: 1500));
+
+
     // load convenience values
     mobile = await storage.getMobile();
     kycSessionUid = await storage.getKycSessionUid();

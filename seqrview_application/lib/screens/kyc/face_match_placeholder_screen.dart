@@ -9,6 +9,7 @@ import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../app/onboarding_stage.dart';
 import '../../app/session_controller.dart';
+import '../../widgets/global_support_button.dart';
 
 class FaceMatchPlaceholderScreen extends StatefulWidget {
   final SessionController session;
@@ -17,6 +18,8 @@ class FaceMatchPlaceholderScreen extends StatefulWidget {
   @override
   State<FaceMatchPlaceholderScreen> createState() => _FaceMatchPlaceholderScreenState();
 }
+
+
 
 class _FaceMatchPlaceholderScreenState extends State<FaceMatchPlaceholderScreen> with WidgetsBindingObserver {
   CameraController? _controller;
@@ -161,8 +164,12 @@ class _FaceMatchPlaceholderScreenState extends State<FaceMatchPlaceholderScreen>
       String statusMsg = "Scanning environment...";
 
       if (faces.isNotEmpty) {
-        final face = faces.first;
-        final bbox = face.boundingBox;
+        if (faces.length > 1) {
+           statusMsg = "Multiple faces detected. Only one allowed.";
+           validFace = false;
+        } else {
+           final face = faces.first;
+           final bbox = face.boundingBox;
         final imgSize = inputImage.metadata?.size ?? const Size(1, 1);
         
         // Simple validation logic
@@ -201,6 +208,7 @@ class _FaceMatchPlaceholderScreenState extends State<FaceMatchPlaceholderScreen>
           validFace = true;
           statusMsg = "Face Detected";
         }
+      }
       } else {
         statusMsg = "No Face Detected";
       }
@@ -325,49 +333,60 @@ class _FaceMatchPlaceholderScreenState extends State<FaceMatchPlaceholderScreen>
       bool isSessionExpired = false;
 
       if (e is DioException) {
-         final statusCode = e.response?.statusCode;
-         final data = e.response?.data;
-         
-         msg = data?['detail']?.toString() 
-             ?? data?['message']?.toString() 
-             ?? "API Error $statusCode";
-
-         if (statusCode == 502 || statusCode == 503 || statusCode == 504) {
-            title = "Verification Provider Error";
-            msg = "The verification service is temporarily busy or unreachable. Please try again in a moment.";
-            icon = Icons.cloud_off_rounded;
+         // Check for Network Errors specifically
+         if (e.type == DioExceptionType.connectionTimeout ||
+             e.type == DioExceptionType.receiveTimeout ||
+             e.type == DioExceptionType.sendTimeout ||
+             e.type == DioExceptionType.connectionError) {
+            title = "Connection Issue";
+            msg = "Cannot connect to the verification service. Please check your internet connection.";
+            icon = Icons.signal_wifi_off_rounded;
             color = Colors.orange;
+         } else {
+             final statusCode = e.response?.statusCode;
+             final data = e.response?.data;
+             
+             msg = data?['detail']?.toString() 
+                 ?? data?['message']?.toString() 
+                 ?? "API Error $statusCode";
 
-         } else if (statusCode == 400 || statusCode == 422) {
-            title = "Verification Failed";
-            
-            // Check for Max Attempts (which returns 400 from backend)
-            if (msg.contains("Maximum face match attempts reached")) {
+             if (statusCode == 502 || statusCode == 503 || statusCode == 504) {
+                title = "Verification Provider Error";
+                msg = "The verification service is temporarily busy or unreachable. Please try again in a moment.";
+                icon = Icons.cloud_off_rounded;
+                color = Colors.orange;
+
+             } else if (statusCode == 400 || statusCode == 422) {
                 title = "Verification Failed";
+                
+                // Check for Max Attempts (which returns 400 from backend)
+                if (msg.contains("Maximum face match attempts reached")) {
+                    title = "Verification Failed";
+                    icon = Icons.gpp_bad_rounded;
+                    color = Colors.red;
+                    isSessionExpired = true;
+                } else {
+                    // Clean up raw Surepass errors
+                    if (msg.contains("Surepass") && msg.contains("422")) {
+                       msg = "Face verification failed. Please try again with better lighting.";
+                    }
+                    icon = Icons.face_retouching_off_rounded;
+                    color = Colors.orange;
+                }
+             } else if (msg.toLowerCase().contains("session expired") || 
+                        msg.toLowerCase().contains("invalid session") ||
+                        statusCode == 404) {
+                title = "Session Expired";
+                msg = "Your KYC session has expired for security reasons. Please restart the process.";
+                icon = Icons.timer_off_rounded;
+                isSessionExpired = true;
+             } else if (statusCode == 429) {
+                title = "Verification Failed";
+                msg = "Maximum face match attempts reached. For security, this session has been cleared. Please restart verification.";
                 icon = Icons.gpp_bad_rounded;
                 color = Colors.red;
-                isSessionExpired = true;
-            } else {
-                // Clean up raw Surepass errors
-                if (msg.contains("Surepass") && msg.contains("422")) {
-                   msg = "Face verification failed. Please try again with better lighting.";
-                }
-                icon = Icons.face_retouching_off_rounded;
-                color = Colors.orange;
-            }
-         } else if (msg.toLowerCase().contains("session expired") || 
-                    msg.toLowerCase().contains("invalid session") ||
-                    statusCode == 404) {
-            title = "Session Expired";
-            msg = "Your KYC session has expired for security reasons. Please restart the process.";
-            icon = Icons.timer_off_rounded;
-            isSessionExpired = true;
-         } else if (statusCode == 429) {
-            title = "Verification Failed";
-            msg = "Maximum face match attempts reached. For security, this session has been cleared. Please restart verification.";
-            icon = Icons.gpp_bad_rounded;
-            color = Colors.red;
-            isSessionExpired = true; 
+                isSessionExpired = true; 
+             }
          }
       }
 
@@ -482,6 +501,8 @@ class _FaceMatchPlaceholderScreenState extends State<FaceMatchPlaceholderScreen>
           height: 32,
         ),
         actions: [
+          GlobalSupportButton(isDark: isDark),
+          const SizedBox(width: 8),
           IconButton(
             onPressed: () => widget.session.logout(),
             icon: Icon(Icons.logout, color: textColor),

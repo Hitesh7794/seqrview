@@ -145,8 +145,8 @@ class AppUserSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = User
-        fields = ["uid", "username", "email", "first_name", "last_name", "full_name", "user_type", "status", "mobile_primary", "photo", "is_active", "created_at", "operator_profile"]
-        read_only_fields = ["uid", "created_at", "username"] # Username shouldn't change typically
+        fields = ["uid", "username", "email", "first_name", "last_name", "full_name", "user_type", "status", "mobile_primary", "photo", "is_active", "created_at", "updated_at", "operator_profile"]
+        read_only_fields = ["uid", "created_at", "updated_at", "username"] # Username shouldn't change typically
 
     def validate_mobile_primary(self, value):
         return validate_indian_mobile(value)

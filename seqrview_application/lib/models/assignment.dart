@@ -75,14 +75,21 @@ class Shift {
   final String name;
   final String startTime;
   final String endTime;
+  final String workDate;
 
-  Shift({required this.name, required this.startTime, required this.endTime});
+  Shift({
+    required this.name, 
+    required this.startTime, 
+    required this.endTime,
+    required this.workDate, 
+  });
 
   factory Shift.fromJson(Map<String, dynamic> json) {
     return Shift(
       name: json['name'] ?? json['shift_code'],
       startTime: json['start_time'],
       endTime: json['end_time'],
+      workDate: json['work_date'] ?? '',
     );
   }
 }

@@ -227,11 +227,22 @@ class _AadhaarOtpSheetState extends State<AadhaarOtpSheet> {
           await widget.session.resetKyc();
           return;
         }
+
+        // Check for Network Errors - Do NOT increment attempts
+        if (e.type == DioExceptionType.connectionTimeout ||
+            e.type == DioExceptionType.receiveTimeout ||
+            e.type == DioExceptionType.sendTimeout ||
+            e.type == DioExceptionType.connectionError) {
+          _showErrorPopup(_prettyError(e), title: "Connection Issue", icon: Icons.signal_wifi_off_rounded);
+          return; // Exit without incrementing attempts
+        }
       }
+      
+      // For other errors (Validation, 422, etc.), increment attempts
       _attempts += 1;
       _showErrorPopup("${_prettyError(e)} (Attempt $_attempts/$_maxAttempts)", 
-        title: (e is DioException && (e.type == DioExceptionType.connectionError || e.type == DioExceptionType.connectionTimeout)) ? "Connection Issue" : "Verification Failed",
-        icon: (e is DioException && (e.type == DioExceptionType.connectionError || e.type == DioExceptionType.connectionTimeout)) ? Icons.signal_wifi_off_rounded : Icons.error_outline_rounded);
+        title: "Verification Failed",
+        icon: Icons.error_outline_rounded);
     } finally {
       if (mounted) setState(() => _loading = false);
     }

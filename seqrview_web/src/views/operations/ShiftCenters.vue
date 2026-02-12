@@ -16,6 +16,9 @@
                     <span>{{ new Date(shift.work_date).toLocaleDateString() }}</span>
                     <span>•</span>
                     <span>{{ shift.start_time }} - {{ shift.end_time }}</span>
+                    <span v-if="shift.is_locked" class="ml-2 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-red-100 text-red-700">
+                        LOCKED
+                    </span>
                 </div>
             </div>
         </div>
@@ -35,7 +38,8 @@
             <div class="flex items-center gap-3">
                  <button 
                     @click="openBulkTaskModal"
-                    class="flex items-center gap-2 px-4 py-2 bg-white text-indigo-600 rounded-xl text-sm font-bold border border-indigo-200 hover:bg-indigo-50 transition-all shadow-sm"
+                    :disabled="shift?.is_locked"
+                    class="flex items-center gap-2 px-4 py-2 bg-white text-indigo-600 rounded-xl text-sm font-bold border border-indigo-200 hover:bg-indigo-50 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 0 00-2 2v12a2 0 002 2h10a2 0 002-2V7a2 0 00-2-2h-2M9 5a2 0 002 2h2a2 0 002-2M9 5a2 0 012-2h2a2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
@@ -49,7 +53,8 @@
                 />
                 <button 
                     @click="openImportModal"
-                    class="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-sm"
+                    :disabled="shift?.is_locked"
+                    class="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -58,7 +63,8 @@
                 </button>
                  <button 
                     @click="openAddCenterModal"
-                    class="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-sm"
+                    :disabled="shift?.is_locked"
+                    class="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -73,15 +79,15 @@
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
          <div class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
             <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">Total Centers</p>
-            <p class="text-2xl font-black text-gray-900 mt-1">{{ centers.length }}</p>
+            <p class="text-2xl font-black text-gray-900 mt-1">{{ stats.total_centers }}</p>
         </div>
         <div class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
             <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">Operators Assigned</p>
-            <p class="text-2xl font-black text-indigo-600 mt-1">-</p>
+            <p class="text-2xl font-black text-indigo-600 mt-1">{{ stats.operators_assigned }}</p>
         </div>
          <div class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
             <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">Task Exceptions</p>
-            <p class="text-2xl font-black text-orange-500 mt-1">-</p>
+            <p class="text-2xl font-black text-orange-500 mt-1">{{ stats.task_exceptions }}</p>
         </div>
     </div>
 
@@ -98,7 +104,7 @@
                 </tr>
             </thead>
             <tbody class="divide-y divide-gray-100 bg-white">
-            <tr v-for="center in filteredCenters" :key="center.uid" class="hover:bg-indigo-50/20 transition-colors group">
+            <tr v-for="center in centers" :key="center.uid" class="hover:bg-indigo-50/20 transition-colors group">
                      <td class="px-6 py-4">
                         <div class="font-bold text-gray-900">{{ center.exam_center_details.client_center_name }}</div>
                         <div class="text-xs text-gray-400 mt-0.5 font-mono">{{ center.exam_center_details.client_center_code }}</div>
@@ -121,9 +127,10 @@
                         >
                             Assign Operators
                         </button>
-                         <button 
+                        <button 
                             @click="openTaskModal(center)"
-                            class="text-gray-400 hover:text-gray-600 text-sm font-bold"
+                            :disabled="shift?.is_locked"
+                            class="text-gray-400 hover:text-gray-600 text-sm font-bold disabled:opacity-30 disabled:cursor-not-allowed"
                         >
                             Tasks
                         </button>
@@ -134,13 +141,54 @@
                         Loading centers...
                     </td>
                 </tr>
-                 <tr v-else-if="filteredCenters.length === 0">
+                 <tr v-else-if="centers.length === 0">
                     <td colspan="5" class="px-6 py-12 text-center text-gray-400 italic">
                         No centers found for this shift. Import CSV to get started.
                     </td>
                 </tr>
             </tbody>
         </table>
+        
+        <!-- Pagination Controls -->
+        <div class="px-6 py-4 border-t border-gray-100 flex items-center justify-between bg-gray-50/50" v-if="totalCenters > 0">
+            <div class="flex items-center gap-4">
+                <span class="text-xs text-gray-500">Rows per page:</span>
+                <select 
+                    v-model="pageSize" 
+                    @change="loadData(1)"
+                    class="bg-white border border-gray-200 text-gray-700 text-xs rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-1.5"
+                >
+                    <option :value="10">10</option>
+                    <option :value="25">25</option>
+                    <option :value="50">50</option>
+                    <option :value="100">100</option>
+                </select>
+                <span class="text-xs text-gray-500">
+                    Showing <span class="font-bold">{{ showingStart }}</span> - <span class="font-bold">{{ showingEnd }}</span> of <span class="font-bold">{{ totalCenters }}</span>
+                </span>
+            </div>
+            <div class="flex items-center gap-2">
+                <button 
+                    @click="loadData(currentPage - 1)" 
+                    :disabled="currentPage === 1"
+                    class="p-2 rounded-lg hover:bg-white disabled:opacity-30 disabled:hover:bg-transparent transition-colors text-gray-500"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                    </svg>
+                </button>
+                <span class="text-xs font-bold text-gray-700">Page {{ currentPage }}</span>
+                <button 
+                    @click="loadData(currentPage + 1)" 
+                    :disabled="!paramsNext"
+                    class="p-2 rounded-lg hover:bg-white disabled:opacity-30 disabled:hover:bg-transparent transition-colors text-gray-500"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                    </svg>
+                </button>
+            </div>
+        </div>
     </div>
 
     <!-- Import Modal (Placeholder) -->
@@ -303,7 +351,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import api from '../../api/axios';
 import BaseModal from '../../components/BaseModal.vue';
@@ -319,6 +367,18 @@ const shift = ref(null);
 const centers = ref([]);
 const loading = ref(false);
 const search = ref('');
+const stats = ref({
+    total_centers: 0,
+    operators_assigned: '-',
+    task_exceptions: '-'
+});
+
+// Pagination
+const currentPage = ref(1);
+const pageSize = ref(10);
+const totalCenters = ref(0);
+const paramsNext = ref(null);
+
 const isImportModalOpen = ref(false);
 const bulkRequesting = ref(false);
 const bulkError = ref('');
@@ -328,15 +388,40 @@ const fileInput = ref(null);
 
 const toast = ref(null); // Reference for ToastNotification
 
-const loadData = async () => {
+const showingStart = computed(() => totalCenters.value === 0 ? 0 : (currentPage.value - 1) * pageSize.value + 1);
+const showingEnd = computed(() => Math.min(currentPage.value * pageSize.value, totalCenters.value));
+
+const loadData = async (page = 1) => {
     loading.value = true;
     try {
-        const [shiftRes, centersRes] = await Promise.all([
-            api.get(`/operations/shifts/${shiftUid}/`),
-            api.get(`/operations/shift-centers/?shift=${shiftUid}`)
-        ]);
-        shift.value = shiftRes.data;
-        centers.value = centersRes.data.results || centersRes.data;
+        // Fetch Shift Details & Stats only on first load or if needed (can optimize)
+        if (!shift.value) {
+            const [shiftRes, statsRes] = await Promise.all([
+                api.get(`/operations/shifts/${shiftUid}/`),
+                api.get(`/operations/shifts/${shiftUid}/statistics/`)
+            ]);
+           shift.value = shiftRes.data;
+           stats.value = statsRes.data;
+        }
+
+        // Fetch Centers with Pagination
+        let url = `/operations/shift-centers/?shift=${shiftUid}&page=${page}&page_size=${pageSize.value}`;
+        if (search.value) {
+            url += `&search=${search.value}`;
+        }
+
+        const centersRes = await api.get(url);
+        
+        if (centersRes.data.results) {
+            centers.value = centersRes.data.results;
+            totalCenters.value = centersRes.data.count;
+            paramsNext.value = centersRes.data.next;
+            currentPage.value = page;
+        } else {
+             centers.value = centersRes.data;
+             totalCenters.value = centersRes.data.length || 0;
+        }
+
     } catch (e) {
         console.error("Failed to load shift data", e);
         if (toast.value) toast.value.trigger("Failed to load shift data", "error");
@@ -345,13 +430,22 @@ const loadData = async () => {
     }
 };
 
-const filteredCenters = computed(() => {
-    if (!search.value) return centers.value;
-    const s = search.value.toLowerCase();
-    return centers.value.filter(c => 
-        c.exam_center_details.client_center_name.toLowerCase().includes(s) || 
-        c.exam_center_details.client_center_code.toLowerCase().includes(s)
-    );
+// Debounce helper
+const debounce = (fn, delay) => {
+    let timeoutId;
+    return (...args) => {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => fn(...args), delay);
+    };
+};
+
+// Debounce search
+const debouncedSearch = debounce(() => {
+    loadData(1);
+}, 300);
+
+watch(search, () => {
+    debouncedSearch();
 });
 
 const openImportModal = () => {
@@ -406,6 +500,7 @@ const submitAddCenter = async () => {
         if (toast.value) toast.value.trigger("Client Center Code is required", "error");
         return;
     }
+    // ... (rest of validation logic same as before) ...
     if (!form.client_center_name) {
         if (toast.value) toast.value.trigger("Center Name is required", "error");
         return;
@@ -446,7 +541,7 @@ const submitAddCenter = async () => {
         };
 
         await api.post('/operations/shift-centers/add-center/', payload);
-        await loadData();
+        await loadData(currentPage.value);
         closeAddCenterModal();
         if (search.value) search.value = ''; 
         if (toast.value) toast.value.trigger("Center added successfully", "success");
@@ -455,11 +550,9 @@ const submitAddCenter = async () => {
         let errorMsg = "Failed to add center";
         if (e.response?.data) {
             if (typeof e.response.data === 'object') {
-                 // specific field errors or detail
                  if (e.response.data.detail) {
                      errorMsg = e.response.data.detail;
                  } else {
-                     // Join first error of each field
                      const messages = Object.values(e.response.data).flat();
                      errorMsg = messages.join(', ');
                  }
@@ -513,7 +606,12 @@ const submitBulkCenters = async () => {
             }
         });
         bulkResult.value = res.data;
-        await loadData();
+        await loadData(currentPage.value);
+        
+        // Also refresh stats
+        const statsRes = await api.get(`/operations/shifts/${shiftUid}/statistics/`);
+        stats.value = statsRes.data;
+
         if (res.data.errors.length === 0) {
             if (toast.value) toast.value.trigger(`Successfully imported ${res.data.created.length} centers.`, "success");
             setTimeout(() => {
@@ -542,5 +640,5 @@ const openBulkTaskModal = () => {
     if (toast.value) toast.value.trigger("Bulk task config coming soon.", "info");
 };
 
-onMounted(loadData);
+onMounted(() => loadData(1));
 </script>

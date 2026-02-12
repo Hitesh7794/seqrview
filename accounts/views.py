@@ -176,66 +176,83 @@ class OperatorOtpVerifyView(APIView):
 
     def post(self, request):
         ser = OperatorOtpVerifySerializer(data=request.data)
-        ser.is_valid(raise_exception=True)
+        if not ser.is_valid():
+            return Response(ser.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        session_uid = ser.validated_data["otp_session_uid"]
-        otp = str(ser.validated_data["otp"]).strip()
+        try:
+            session = OtpSession.objects.get(uid=ser.validated_data["otp_session_uid"])
+        except OtpSession.DoesNotExist:
+            return Response({"detail": "Invalid OTP session"}, status=status.HTTP_404_NOT_FOUND)
 
-        max_attempts = getattr(settings, "OTP_MAX_ATTEMPTS", 5)
-
+        max_attempts = getattr(settings, "OTP_MAX_ATTEMPTS", 3)
         
-        with transaction.atomic():
-            sess = OtpSession.objects.select_for_update().filter(uid=session_uid).first()
+        # Check constraints
+        if session.verified_at:
+            return Response({"detail": "OTP already used"}, status=status.HTTP_400_BAD_REQUEST)
+        if session.is_expired():
+            return Response({"detail": "OTP expired"}, status=status.HTTP_400_BAD_REQUEST)
+        if session.attempts >= max_attempts:
+            return Response({"detail": "Too many attempts"}, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
-            if not sess:
-                return Response({"detail": "Invalid otp session"}, status=status.HTTP_404_NOT_FOUND)
-            if sess.verified_at:
-                return Response({"detail": "OTP already used"}, status=status.HTTP_400_BAD_REQUEST)
-            if sess.is_expired():
-                return Response({"detail": "OTP expired"}, status=status.HTTP_400_BAD_REQUEST)
-            if sess.attempts >= max_attempts:
-                return Response({"detail": "Too many attempts"}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        # Verify OTP
+        otp_hash = OtpSession._hash_otp(session.mobile, ser.validated_data["otp"])
+        if session.otp_hash != otp_hash:
+            session.attempts += 1
+            session.save()
+            return Response({"detail": "Invalid OTP"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Valid OTP
+        session.verified_at = timezone.now()
+        session.save()
 
-            expected = OtpSession._hash_otp(sess.mobile, otp)
-            if expected != sess.otp_hash:
-                sess.attempts += 1
-                sess.save(update_fields=["attempts", "updated_at"])
-                return Response({"detail": "Invalid OTP"}, status=status.HTTP_400_BAD_REQUEST)
-
+        # Find or create user
+        try:
+            # We look up by mobile_primary. Since mobile is unique for operators (mostly), 
+            # we should find the correct user. 
+            # NOTE: RegisterOperatorView creates user with mobile_primary=...
+            user = User.objects.filter(mobile_primary=session.mobile, user_type='OPERATOR').first()
             
-            sess.verified_at = timezone.now()
-            sess.save(update_fields=["verified_at", "updated_at"])
+            if not user:
+                # If user doesn't exist, maybe we should create one? Or is registration mandatory first?
+                # For now assume registration happened. If not found, return error?
+                # Actually, the flow is: login with mobile -> OTP. If user exists, login.
+                return Response({"detail": "User not found for this mobile. Please register first."}, status=status.HTTP_404_NOT_FOUND)
 
-       
-        user = (
-            User.objects.filter(user_type="OPERATOR", mobile_primary=sess.mobile)
-            .order_by("-created_at")
-            .first()
-        )
-        if not user:
-            return Response({"detail": "Operator not found"}, status=status.HTTP_404_NOT_FOUND)
+            if not user.is_active:
+                return Response({"detail": "User account is inactive."}, status=status.HTTP_403_FORBIDDEN)
+            
+            # Update last login details effectively
+            user.last_login = timezone.now()
+            user.save(update_fields=['last_login', 'updated_at']) # Explicitly update updated_at via save() or manual set
 
-        
-        refresh = RefreshToken.for_user(user)
+            refresh = RefreshToken.for_user(user)
+            return Response({
+                "user": AppUserSerializer(user).data,
+                "tokens": {
+                    "refresh": str(refresh),
+                    "access": str(refresh.access_token),
+                }
+            }, status=status.HTTP_200_OK)
 
-        return Response(
-            {
-                "user": {
-                    "uid": str(getattr(user, "uid", "")),
-                    "username": user.username,
-                    "mobile_primary": user.mobile_primary,
-                },
-                "tokens": {"refresh": str(refresh), "access": str(refresh.access_token)},
-            },
-            status=status.HTTP_200_OK,
-        )
+        except Exception as e:
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+from rest_framework import viewsets, filters 
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.pagination import PageNumberPagination
 
-from rest_framework import viewsets
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 1000
 
 class AppUserViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     lookup_field = 'uid'
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [filters.SearchFilter, DjangoFilterBackend]
+    search_fields = ['full_name', 'username', 'mobile_primary', 'email']
+    filterset_fields = ['status', 'user_type', 'operator_profile__profile_status', 'operator_profile__kyc_status']
 
     def get_queryset(self):
         user = self.request.user
@@ -243,9 +260,7 @@ class AppUserViewSet(viewsets.ModelViewSet):
             return User.objects.filter(client=user.client).order_by('-created_at')
         elif user.user_type == 'INTERNAL_ADMIN' or user.is_superuser:
             queryset = User.objects.all().order_by('-created_at')
-            user_type = self.request.query_params.get('user_type', None)
-            if user_type:
-                queryset = queryset.filter(user_type=user_type)
+            # user_type filter is now handled by DjangoFilterBackend if passed as query param
             return queryset
         return User.objects.none()
 

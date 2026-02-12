@@ -13,8 +13,11 @@
                     {{ shiftCenter.exam_center_details.client_center_name }} <span class="text-gray-400 font-normal text-lg">({{ shiftCenter.exam_center_details.client_center_code }})</span>
                 </h1>
                 <div v-else class="h-8 w-64 bg-gray-200 rounded animate-pulse"></div>
-                 <p class="text-sm text-gray-500 mt-1" v-if="shiftCenter">
+                <p class="text-sm text-gray-500 mt-1" v-if="shiftCenter">
                     Shift: {{ shiftCenter.shift_details.name }} ({{ shiftCenter.shift_details.start_time }} - {{ shiftCenter.shift_details.end_time }})
+                    <span v-if="shiftCenter.shift_details.is_locked" class="ml-2 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-red-100 text-red-700">
+                        LOCKED
+                    </span>
                 </p>
             </div>
         </div>
@@ -37,9 +40,10 @@
                     filename="assignments.csv"
                     :filters="{ shift_center: shiftCenterUid }"
                 />
-                 <button 
+                <button 
                     @click="openImportModal"
-                    class="flex items-center gap-2 px-4 py-2 bg-white text-indigo-600 rounded-xl text-sm font-bold border border-indigo-200 hover:bg-indigo-50 transition-all shadow-sm"
+                    :disabled="shiftCenter?.shift_details?.is_locked"
+                    class="flex items-center gap-2 px-4 py-2 bg-white text-indigo-600 rounded-xl text-sm font-bold border border-indigo-200 hover:bg-indigo-50 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -48,7 +52,8 @@
                 </button>
                 <button 
                     @click="openAddOperatorModal"
-                    class="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-sm"
+                    :disabled="shiftCenter?.shift_details?.is_locked"
+                    class="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -67,7 +72,8 @@
                     <th class="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-500">Operator</th>
                     <th class="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-500">Role</th>
                     <th class="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-500">Status</th>
-                     <th class="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-500">Check-in</th>
+                    <th class="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-500">Check-in</th>
+                    <th class="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-500">Check-out</th>
                     <th class="px-6 py-4 text-right text-[10px] font-black uppercase tracking-widest text-gray-500">Actions</th>
                 </tr>
             </thead>
@@ -100,14 +106,31 @@
                         </span>
                     </td>
                     <td class="px-6 py-4 text-xs text-gray-500">
-                        {{ assignment.check_in_time ? new Date(assignment.check_in_time).toLocaleTimeString() : '-' }}
+                        {{ getTaskTime(assignment, 'Check In') }}
+                    </td>
+                    <td class="px-6 py-4 text-xs text-gray-500">
+                        {{ getTaskTime(assignment, 'Check Out') }}
                     </td>
                     <td class="px-6 py-4 text-right">
+                         <button 
+                            @click="openTaskModal(assignment)"
+                            class="text-indigo-600 hover:text-indigo-800 text-sm font-bold mr-4 inline-flex items-center gap-1"
+                            title="View Tasks"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                            View
+                        </button>
                         <button 
                             @click="removeAssignment(assignment)"
                             class="text-red-500 hover:text-red-700 text-sm font-bold"
+                            title="Remove"
                         >
-                            Remove
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
                         </button>
                     </td>
                 </tr>
@@ -123,7 +146,120 @@
                 </tr>
             </tbody>
         </table>
+
+        <!-- Pagination Controls -->
+        <div class="px-6 py-4 border-t border-gray-100 flex items-center justify-between bg-gray-50/50" v-if="totalAssignments > 0">
+            <div class="flex items-center gap-4">
+                <span class="text-xs text-gray-500">Rows per page:</span>
+                <select 
+                    v-model="pageSize" 
+                    @change="loadData(1)"
+                    class="bg-white border border-gray-200 text-gray-700 text-xs rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-1.5"
+                >
+                    <option :value="10">10</option>
+                    <option :value="25">25</option>
+                    <option :value="50">50</option>
+                    <option :value="100">100</option>
+                </select>
+                <span class="text-xs text-gray-500">
+                    Showing <span class="font-bold">{{ showingStart }}</span> - <span class="font-bold">{{ showingEnd }}</span> of <span class="font-bold">{{ totalAssignments }}</span>
+                </span>
+            </div>
+            <div class="flex items-center gap-2">
+                <button 
+                    @click="loadData(currentPage - 1)" 
+                    :disabled="currentPage === 1"
+                    class="p-2 rounded-lg hover:bg-white disabled:opacity-30 disabled:hover:bg-transparent transition-colors text-gray-500"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                    </svg>
+                </button>
+                <span class="text-xs font-bold text-gray-700">Page {{ currentPage }}</span>
+                <button 
+                    @click="loadData(currentPage + 1)" 
+                    :disabled="!paramsNext"
+                    class="p-2 rounded-lg hover:bg-white disabled:opacity-30 disabled:hover:bg-transparent transition-colors text-gray-500"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                    </svg>
+                </button>
+            </div>
+        </div>
     </div>
+
+    <!-- Task View Modal -->
+    <BaseModal :isOpen="isTaskModalOpen" :title="`Tasks for ${selectedAssignment?.operator?.full_name || 'Operator'}`" @close="closeTaskModal" size="2xl">
+        <div class="space-y-6">
+            <div v-if="loadingTasks" class="flex justify-center py-8">
+                <div class="h-8 w-8 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
+            </div>
+            <div v-else-if="assignmentTasks.length === 0" class="text-center py-8 text-gray-500 italic">
+                No tasks found for this operator.
+            </div>
+            <div v-else class="space-y-4">
+                <div v-for="task in assignmentTasks" :key="task.uid" class="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                    <div class="flex justify-between items-start mb-2">
+                        <div>
+                            <h3 class="font-bold text-gray-900 text-sm">{{ task.task_name }}</h3>
+                            <p class="text-xs text-gray-500">{{ task.description }}</p>
+                        </div>
+                         <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider"
+                            :class="{
+                                'bg-green-100 text-green-700': task.status === 'COMPLETED',
+                                'bg-gray-200 text-gray-600': task.status === 'PENDING',
+                            }">
+                            {{ task.status }}
+                        </span>
+                    </div>
+
+                    <div v-if="task.completed_at" class="text-[10px] text-gray-400 mb-2">
+                        Completed at: {{ new Date(task.completed_at).toLocaleString() }}
+                    </div>
+
+                    <!-- Response Data -->
+                    <div v-if="task.response_data && Object.keys(task.response_data).length > 0" class="mb-3">
+                         <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Response Data:</p>
+                         <div class="bg-white p-2 rounded border border-gray-200 text-xs font-mono text-gray-700">
+                            {{ task.response_data }}
+                         </div>
+                    </div>
+
+                    <!-- Evidence Media -->
+                    <div v-if="task.evidence_files && task.evidence_files.length > 0">
+                        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Evidence:</p>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            <div v-for="file in task.evidence_files" :key="file.uid" class="relative group aspect-square rounded-lg overflow-hidden bg-gray-200 border border-gray-200">
+                                <img 
+                                    v-if="file.media_type === 'PHOTO'" 
+                                    :src="file.file" 
+                                    class="w-full h-full object-cover" 
+                                    alt="Task Evidence"
+                                >
+                                <video 
+                                    v-else-if="file.media_type === 'VIDEO'" 
+                                    :src="file.file" 
+                                    class="w-full h-full object-cover" 
+                                    controls
+                                ></video>
+                                <a 
+                                    :href="file.file" 
+                                    target="_blank"
+                                    class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                    </svg>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </BaseModal>
 
     <!-- Add Assignment Modal -->
     <BaseModal :isOpen="isModalOpen" title="Assign Operator" @close="closeModal">
@@ -138,7 +274,7 @@
                 <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Select Operator</label>
                  <select v-model="form.operator" required class="w-full px-4 py-2 bg-gray-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500">
                     <option v-for="op in availableOperators" :key="op.uid" :value="op.uid">
-                        {{ op.full_name }} ({{ op.username }})
+                        {{ op.full_name || op.username }} ({{ op.mobile_primary || 'No Mobile' }})
                     </option>
                 </select>
              </div>
@@ -241,7 +377,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import api from '../../api/axios';
 import BaseModal from '../../components/BaseModal.vue';
@@ -260,28 +396,71 @@ const isModalOpen = ref(false);
 const saving = ref(false);
 const error = ref('');
 
+// Pagination
+const currentPage = ref(1);
+const pageSize = ref(10);
+const totalAssignments = ref(0);
+const paramsNext = ref(null);
+
+const showingStart = computed(() => totalAssignments.value === 0 ? 0 : (currentPage.value - 1) * pageSize.value + 1);
+const showingEnd = computed(() => Math.min(currentPage.value * pageSize.value, totalAssignments.value));
+
 const form = ref({
     shift_center: shiftCenterUid,
     operator: '',
     role: '',
-    status: 'CONFIRMED'
+    role: '',
+    status: 'PENDING'
 });
 
-const loadData = async () => {
+
+const loadData = async (page = 1) => {
     loading.value = true;
     try {
-        const [centerRes, assignRes] = await Promise.all([
-            api.get(`/operations/shift-centers/${shiftCenterUid}/`),
-            api.get(`/assignments/?shift_center=${shiftCenterUid}`)
-        ]);
-        shiftCenter.value = centerRes.data;
-        assignments.value = assignRes.data.results || assignRes.data;
+        if (!shiftCenter.value) {
+            const centerRes = await api.get(`/operations/shift-centers/${shiftCenterUid}/`);
+            shiftCenter.value = centerRes.data;
+        }
+
+        let url = `/assignments/?shift_center=${shiftCenterUid}&page=${page}&page_size=${pageSize.value}`;
+        if (search.value) {
+            url += `&search=${search.value}`;
+        }
+        
+        const assignRes = await api.get(url);
+        
+        if (assignRes.data.results) {
+            assignments.value = assignRes.data.results;
+            totalAssignments.value = assignRes.data.count;
+            paramsNext.value = assignRes.data.next;
+            currentPage.value = page;
+        } else {
+             assignments.value = assignRes.data;
+             totalAssignments.value = assignRes.data.length || 0;
+        }
     } catch (e) {
         console.error("Failed to load assignments", e);
     } finally {
         loading.value = false;
     }
 };
+
+// Debounce helper
+const debounceLocal = (fn, delay) => {
+    let timeoutId;
+    return (...args) => {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => fn(...args), delay);
+    };
+};
+
+const debouncedSearch = debounceLocal(() => {
+    loadData(1);
+}, 300);
+
+watch(search, () => {
+    debouncedSearch();
+});
 
 const openAddOperatorModal = async () => {
     isModalOpen.value = true;
@@ -290,7 +469,7 @@ const openAddOperatorModal = async () => {
         try {
             const [rolesRes, opsRes] = await Promise.all([
                  api.get('/masters/roles/'),
-                 api.get('/identity/users/?user_type=OPERATOR&status=ACTIVE')
+                 api.get('/identity/users/?user_type=OPERATOR') // Removed status=ACTIVE to show all operators (Draft/Requested etc)
             ]);
             roles.value = rolesRes.data.results || rolesRes.data;
             availableOperators.value = opsRes.data.results || opsRes.data;
@@ -311,7 +490,7 @@ const assignOperator = async () => {
     console.log("Submitting Assignment Form:", form.value);
     try {
         await api.post('/assignments/', form.value);
-        await loadData();
+        await loadData(currentPage.value);
         closeModal();
     } catch (e) {
         console.error("Assignment Failed:", e.response?.data);
@@ -332,10 +511,38 @@ const removeAssignment = async (assignment) => {
     if (!confirm('Remove this operator assignment?')) return;
     try {
         await api.delete(`/assignments/${assignment.uid}/`);
-        await loadData();
+        await loadData(currentPage.value);
     } catch (e) {
         alert("Failed to remove assignment.");
     }
+};
+
+// Task View Logic
+const isTaskModalOpen = ref(false);
+const selectedAssignment = ref(null);
+const assignmentTasks = ref([]);
+const loadingTasks = ref(false);
+
+const openTaskModal = async (assignment) => {
+    selectedAssignment.value = assignment;
+    isTaskModalOpen.value = true;
+    assignmentTasks.value = [];
+    loadingTasks.value = true;
+    
+    try {
+        const res = await api.get(`/assignments/tasks/?assignment=${assignment.uid}`);
+        assignmentTasks.value = res.data.results || res.data;
+    } catch (e) {
+        console.error("Failed to load tasks", e);
+    } finally {
+        loadingTasks.value = false;
+    }
+};
+
+const closeTaskModal = () => {
+    isTaskModalOpen.value = false;
+    selectedAssignment.value = null;
+    assignmentTasks.value = [];
 };
 
 // Bulk Import Logic
@@ -364,7 +571,7 @@ const handleFileChange = (e) => {
 
 const downloadTemplate = async () => {
     try {
-        const response = await api.get('/assignments/download-template/', {
+        const response = await api.get('/assignments/download_template/', {
             responseType: 'blob'
         });
         const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -379,6 +586,27 @@ const downloadTemplate = async () => {
         console.error("Failed to download template", e);
         alert("Failed to download template. Please check your connection.");
     }
+};
+
+const formatDate = (dateString, fallback = 'N/A') => {
+    if (!dateString) return fallback;
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return fallback;
+    return date.toLocaleDateString();
+};
+
+const getTaskTime = (assignment, taskNamePart) => {
+    if (!assignment.tasks) return '-';
+    // Find task that matches name partially (case-insensitive)
+    const task = assignment.tasks.find(t => 
+        t.task_name?.toLowerCase().includes(taskNamePart.toLowerCase()) && 
+        t.status === 'COMPLETED'
+    );
+    
+    if (task && task.completed_at) {
+        return new Date(task.completed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    return '-';
 };
 
 const submitBulkAssignments = async () => {
@@ -398,7 +626,7 @@ const submitBulkAssignments = async () => {
             }
         });
         bulkResult.value = res.data;
-        await loadData();
+        await loadData(currentPage.value);
         if (res.data.errors.length === 0) {
             setTimeout(() => {
                 closeImportModal();
@@ -412,5 +640,5 @@ const submitBulkAssignments = async () => {
     }
 };
 
-onMounted(loadData);
+onMounted(() => loadData(1));
 </script>

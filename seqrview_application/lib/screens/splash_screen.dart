@@ -12,6 +12,15 @@ class SplashScreen extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            Container(
+              constraints: const BoxConstraints(maxWidth: 250),
+              width: MediaQuery.of(context).size.width * 0.7,
+              child: Image.asset(
+                'assets/images/logo.png',
+                fit: BoxFit.contain,
+              ),
+            ),
+            const SizedBox(height: 60), // More breathing room
             const CircularProgressIndicator(),
             const SizedBox(height: 12),
             const Text("Loading..."),

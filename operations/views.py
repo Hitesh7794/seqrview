@@ -1,7 +1,10 @@
-from rest_framework import viewsets, permissions, status
+from rest_framework import viewsets, permissions, status, filters
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.pagination import PageNumberPagination
 from .models import Exam, Shift, ExamCenter, ShiftCenter, ShiftCenterTask
+from django.db.models import Count
 from .serializers import (
     ExamSerializer, ShiftSerializer, 
     ExamCenterSerializer, ShiftCenterSerializer,
@@ -15,8 +18,17 @@ from django.db import transaction
 
 from common.mixins import ExportMixin
 
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 1000
+
 class ExamViewSet(ExportMixin, viewsets.ModelViewSet):
     serializer_class = ExamSerializer
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [filters.SearchFilter, DjangoFilterBackend]
+    search_fields = ['name', 'exam_code', 'client__name']
+    filterset_fields = ['status']
     lookup_field = 'uid'
     basename = 'exam'
 
@@ -27,8 +39,6 @@ class ExamViewSet(ExportMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        print(f"DEBUG: ExamViewSet User: {user} | Type: {user.user_type} | Super: {user.is_superuser}")
-        
         qs = Exam.objects.none()
         if user.user_type == 'CLIENT_ADMIN' and user.client:
             qs = Exam.objects.filter(client=user.client)
@@ -42,7 +52,7 @@ class ExamViewSet(ExportMixin, viewsets.ModelViewSet):
         if client_id:
             qs = qs.filter(client__uid=client_id)
             
-        return qs
+        return qs.order_by('-created_at')  # Ensure consistent ordering for pagination
 
 class ShiftViewSet(ExportMixin, viewsets.ModelViewSet):
     serializer_class = ShiftSerializer
@@ -52,7 +62,7 @@ class ShiftViewSet(ExportMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        qs = Shift.objects.all()
+        qs = Shift.objects.annotate(centers_count=Count('shift_centers'))
         if user.user_type == 'CLIENT_ADMIN' and user.client:
             qs = qs.filter(exam__client=user.client)
         elif user.user_type == 'EXAM_ADMIN' and user.exam:
@@ -64,6 +74,28 @@ class ShiftViewSet(ExportMixin, viewsets.ModelViewSet):
             qs = qs.filter(exam__uid=exam_id)
             
         return qs
+
+    @action(detail=True, methods=['get'])
+    def statistics(self, request, uid=None):
+        shift = self.get_object()
+        
+        # Total Centers
+        total_centers = shift.shift_centers.count()
+        
+        # Operators Assigned (Distinct operators assigned to centers in this shift)
+        # We need to import locally to avoid circular dependency if assignments.models imports operations.models
+        from assignments.models import OperatorAssignment
+        
+        operators_assigned = OperatorAssignment.objects.filter(
+            shift_center__shift=shift,
+            status__in=['CONFIRMED', 'CHECK_IN', 'COMPLETED']
+        ).values('operator').distinct().count()
+        
+        return Response({
+            'total_centers': total_centers,
+            'operators_assigned': operators_assigned,
+            'task_exceptions': 0 # Placeholder for now
+        })
 
 class ExamCenterViewSet(ExportMixin, viewsets.ModelViewSet):
     serializer_class = ExamCenterSerializer
@@ -92,9 +124,15 @@ class ShiftCenterViewSet(ExportMixin, viewsets.ModelViewSet):
     lookup_field = 'uid'
     basename = 'shift_center'
 
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [filters.SearchFilter, DjangoFilterBackend, filters.OrderingFilter]
+    search_fields = ['exam_center__client_center_name', 'exam_center__client_center_code', 'exam_center__city']
+    ordering_fields = ['exam_center__client_center_name', 'created_at']
+    ordering = ['-created_at']
+
     def get_queryset(self):
         user = self.request.user
-        qs = ShiftCenter.objects.all()
+        qs = ShiftCenter.objects.select_related('exam_center', 'shift').all()
         if user.user_type == 'CLIENT_ADMIN' and user.client:
             qs = qs.filter(exam__client=user.client)
         elif user.user_type == 'EXAM_ADMIN' and user.exam:
