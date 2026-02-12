@@ -107,6 +107,7 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
   }
   
   String _prettyError(Object e) {
+    if (e is String) return e;
     if (e is DioException) {
       if (e.type == DioExceptionType.connectionTimeout || 
           e.type == DioExceptionType.connectionError) {
@@ -221,9 +222,35 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
       return;
     }
 
+    // Confirmation Dialog
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(isCheckIn ? "Confirm Check-In" : "Confirm Check-Out"),
+        content: Text("Are you sure you want to ${isCheckIn ? 'check in' : 'check out'} now?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text("NO"),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isCheckIn ? Colors.green : Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text("YES"),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
 
 
     try {
+      // 1. Permissions (Must be before loading)
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -231,6 +258,7 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
       }
       if (permission == LocationPermission.deniedForever) throw "Location permissions are permanently denied.";
 
+      // 2. Selfie (Interactive - Must be before loading)
       String? selfiePath;
       if (isCheckIn && exam.isSelfieEnabled) {
         final ImagePicker picker = ImagePicker();
@@ -239,34 +267,11 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
           maxWidth: 600,
           imageQuality: 80,
         );
-        if (photo == null) throw "Selfie is required to check in.";
+        if (photo == null) return; // User cancelled camera
         selfiePath = photo.path;
       }
 
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.medium,
-        timeLimit: const Duration(seconds: 30),
-      );
-
-      final dist = Geolocator.distanceBetween(
-        position.latitude, position.longitude, targetLat, targetLong
-      );
-
-      // Only check geofence if enabled for this exam
-      if (exam.isGeofencingEnabled && dist > radius) {
-        if (!mounted) return;
-        showDialog(
-          context: context, 
-          builder: (ctx) => AlertDialog(
-            title: const Text("Too Far"),
-            content: Text("You are ${dist.toInt()}m away. Max allowed is ${radius}m."),
-            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("OK"))],
-          )
-        );
-        return; 
-      }
-
-      // Show Loading Dialog
+      // 3. Show Loading Dialog (Everything after here is background)
       if (mounted) {
         showDialog(
           context: context,
@@ -290,13 +295,11 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
                         color: _isDark ? Colors.white : Colors.black87
                       ),
                     ),
-                    if (isCheckIn) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        "Checking face match & liveness...",
-                        style: TextStyle(fontSize: 12, color: Colors.grey),
-                      ),
-                    ]
+                    const SizedBox(height: 8),
+                    Text(
+                      "Fetching location & syncing...",
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
                   ],
                 ),
               ),
@@ -305,33 +308,56 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
         );
       }
 
+      try {
+        // 4. Get Position
+        final position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.medium,
+          timeLimit: const Duration(seconds: 30),
+        ).catchError((e) {
+          throw "Could not get your location. Please ensure GPS is on.";
+        });
 
-    try {
+        // 5. Distance check
+        final dist = Geolocator.distanceBetween(
+          position.latitude, position.longitude, targetLat, targetLong
+        );
+
+        if (exam.isGeofencingEnabled && dist > radius) {
+          if (mounted) Navigator.pop(context); // Close loading
+          if (mounted) {
+            showDialog(
+              context: context, 
+              builder: (ctx) => AlertDialog(
+                title: const Text("Too Far"),
+                content: Text("You are ${dist.toInt()}m away from the center. Max allowed is ${radius}m."),
+                actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("OK"))],
+              )
+            );
+          }
+          return; 
+        }
+
+        // 6. Call API
         if (isCheckIn) {
           await widget.session.api.checkIn(assignment.uid, position.latitude, position.longitude, selfiePath);
         } else {
           await widget.session.api.checkOut(assignment.uid, position.latitude, position.longitude);
         }
 
-        // Close Loading Dialog
-        if (mounted) Navigator.pop(context); 
-        
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(isCheckIn ? "Checked In Successfully!" : "Checked Out Successfully!"), 
-          backgroundColor: Colors.green
-        ));
-        _loadDuties();
-
-      } catch (e) {
-        // Close Loading Dialog on Error
-        if (mounted) Navigator.pop(context);
+        // 7. Success
+        if (mounted) Navigator.pop(context); // Close loading
         
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(_prettyError(e)), backgroundColor: Colors.red),
-          );
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(isCheckIn ? "Checked In Successfully!" : "Checked Out Successfully!"), 
+            backgroundColor: Colors.green
+          ));
+          _loadDuties();
         }
+
+      } catch (e) {
+        if (mounted) Navigator.pop(context); // Close loading
+        rethrow;
       }
 
     } catch (e) {
@@ -340,24 +366,30 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
           SnackBar(content: Text(_prettyError(e)), backgroundColor: Colors.red),
         );
       }
-    } finally {
-      // _isLoading removed as we use dialog now
     }
   }
 
   Future<void> _launchMap(double lat, double long) async {
-    final uri = Uri.parse("https://www.google.com/maps/search/?api=1&query=$lat,$long");
+    final googleMapsUrl = Uri.parse("https://www.google.com/maps/search/?api=1&query=$lat,$long");
+    final appleMapsUrl = Uri.parse("https://maps.apple.com/?q=$lat,$long");
+    final geoUrl = Uri.parse("geo:$lat,$long?q=$lat,$long");
+
     try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (await canLaunchUrl(geoUrl)) {
+        await launchUrl(geoUrl);
+      } else if (await canLaunchUrl(googleMapsUrl)) {
+        await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication);
+      } else if (await canLaunchUrl(appleMapsUrl)) {
+        await launchUrl(appleMapsUrl, mode: LaunchMode.externalApplication);
       } else {
-         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Could not open maps.")),
-          );
-        }
+        throw 'Could not launch maps';
       }
     } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Could not open maps."), backgroundColor: Colors.red),
+        );
+      }
       print("Map Launch Error: $e");
     }
   }
@@ -555,23 +587,54 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
                 borderRadius: BorderRadius.circular(8),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  child: Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: Text(
-                          center.clientCenterName,
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? Colors.white : Colors.black87,
+                      Row(
+                        children: [
+                          Expanded(
+                            child: RichText(
+                              text: TextSpan(
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: isDark ? Colors.white : Colors.black87,
+                                  fontFamily: 'Outfit', // Match app theme if possible
+                                ),
+                                children: [
+                                  TextSpan(text: center.clientCenterName),
+                                  TextSpan(
+                                    text: " (${center.clientCenterCode})",
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.normal,
+                                      color: Colors.grey[500],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          if (hasLocation)
+                            const Padding(
+                              padding: EdgeInsets.only(left: 8.0),
+                              child: Icon(Icons.location_on, size: 30, color: Colors.blue),
+                            )
+                        ],
+                      ),
+                      if (assignment.centerAddress != null && assignment.centerAddress!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4.0),
+                          child: Text(
+                            assignment.centerAddress!,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[500],
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                      ),
-                      if (hasLocation)
-                        const Padding(
-                          padding: EdgeInsets.only(left: 8.0),
-                          child: Icon(Icons.map, size: 20, color: Colors.blue),
-                        )
                     ],
                   ),
                 ),
@@ -638,59 +701,63 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
                           color: Colors.green),
 
                     if (assignment.isCheckedIn) ...[
-                      _buildPrimaryButton("DUTY OVER (CHECK OUT)", 
-                          () => _handleLocationAction(assignment, false), 
-                          color: Colors.red),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => DutyDetailScreen(
-                                      session: widget.session,
-                                      assignment: assignment,
+                      if (_isExpired(assignment) || assignment.isCompleted)
+                        _buildTaskSummary(assignment)
+                      else ...[
+                        _buildPrimaryButton("DUTY OVER (CHECK OUT)", 
+                            () => _handleLocationAction(assignment, false), 
+                            color: Colors.red),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => DutyDetailScreen(
+                                        session: widget.session,
+                                        assignment: assignment,
+                                      ),
                                     ),
-                                  ),
-                                );
-                              },
-                              icon: const Icon(Icons.checklist, size: 18),
-                              label: const Text("View Tasks"),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: isDark ? Colors.white : Colors.black87,
-                                side: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey[300]!),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                  );
+                                },
+                                icon: const Icon(Icons.checklist, size: 18),
+                                label: const Text("View Tasks"),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: isDark ? Colors.white : Colors.black87,
+                                  side: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey[300]!),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () {
-                                Navigator.push(
-                                  context, 
-                                  MaterialPageRoute(builder: (_) => ReportIssueScreen(
-                                    session: widget.session,
-                                    assignment: assignment
-                                  ))
-                                );
-                              },
-                              icon: const Icon(Icons.warning_amber_rounded, size: 18),
-                              label: const Text("Report Issue"),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.orange,
-                                side: const BorderSide(color: Colors.orange),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                padding: const EdgeInsets.symmetric(vertical: 12),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context, 
+                                    MaterialPageRoute(builder: (_) => ReportIssueScreen(
+                                      session: widget.session,
+                                      assignment: assignment
+                                    ))
+                                  );
+                                },
+                                icon: const Icon(Icons.warning_amber_rounded, size: 18),
+                                label: const Text("Report Issue"),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.orange,
+                                  side: const BorderSide(color: Colors.orange),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                ),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
+                          ],
+                        ),
+                      ],
                     ],
 
                     if (!isActive && !isPending && !assignment.isCheckedIn)
@@ -764,6 +831,71 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
           text,
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
+      ),
+    );
+  }
+
+  Widget _buildTaskSummary(Assignment assignment) {
+    final doneCount = assignment.tasks.where((t) => t.isDone).length;
+    final totalCount = assignment.tasks.length;
+    final accentColor = _getStatusColor(assignment.status);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _isDark ? Colors.blueGrey.withOpacity(0.1) : Colors.blueGrey[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: accentColor.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                "Task Summary",
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: _isDark ? Colors.white : Colors.blueGrey[800],
+                ),
+              ),
+              Text(
+                "$doneCount / $totalCount Done",
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: doneCount == totalCount ? Colors.green : Colors.orange,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...assignment.tasks.map((task) => Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              children: [
+                Icon(
+                  task.isDone ? Icons.check_circle : Icons.radio_button_unchecked,
+                  size: 14,
+                  color: task.isDone ? Colors.green : Colors.grey,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    task.taskName,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: _isDark ? Colors.grey[400] : Colors.grey[700],
+                      decoration: task.isDone ? TextDecoration.lineThrough : null,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          )).toList(),
+        ],
       ),
     );
   }

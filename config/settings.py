@@ -15,7 +15,7 @@ SECRET_KEY = 'django-insecure-g11ybgze*e*u-e$zq!aob#a$%m_x_xddocsz@ej(#)w4juma3l
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
 # ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '127.0.0.1,localhost','').split(',')
-ALLOWED_HOSTS =('127.0.0.1','localhost','e798-115-241-42-138.ngrok-free.app')
+ALLOWED_HOSTS =('127.0.0.1','localhost','6db1-115-241-42-138.ngrok-free.app')
 # Production Security Settings
 if not DEBUG:
     SECURE_SSL_REDIRECT = True

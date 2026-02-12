@@ -4,6 +4,7 @@ class Assignment {
   final String assignmentType;
   final ShiftCenter shiftCenter;
   final Role role;
+  final List<AssignmentTask> tasks;
 
   Assignment({
     required this.uid,
@@ -11,6 +12,7 @@ class Assignment {
     required this.assignmentType,
     required this.shiftCenter,
     required this.role,
+    this.tasks = const [],
   });
 
   factory Assignment.fromJson(Map<String, dynamic> json) {
@@ -20,6 +22,9 @@ class Assignment {
       assignmentType: json['assignment_type'],
       shiftCenter: ShiftCenter.fromJson(json['shift_center']),
       role: Role.fromJson(json['role']),
+      tasks: (json['tasks'] as List? ?? [])
+          .map((t) => AssignmentTask.fromJson(t))
+          .toList(),
     );
   }
   
@@ -30,6 +35,36 @@ class Assignment {
   // Convenience Getters
   String get examName => shiftCenter.exam.name;
   String get centerName => shiftCenter.center.clientCenterName;
+  String get centerCode => shiftCenter.center.clientCenterCode;
+  String? get centerAddress => shiftCenter.center.masterCenter?.address;
+}
+
+class AssignmentTask {
+  final String uid;
+  final String taskName;
+  final String taskType;
+  final String status;
+  final bool isMandatory;
+
+  AssignmentTask({
+    required this.uid,
+    required this.taskName,
+    required this.taskType,
+    required this.status,
+    required this.isMandatory,
+  });
+
+  factory AssignmentTask.fromJson(Map<String, dynamic> json) {
+    return AssignmentTask(
+      uid: json['uid'],
+      taskName: json['task_name'] ?? "",
+      taskType: json['task_type'] ?? "",
+      status: json['status'] ?? "PENDING",
+      isMandatory: json['is_mandatory'] ?? false,
+    );
+  }
+
+  bool get isDone => status == 'COMPLETED';
 }
 
 class ShiftCenter {
