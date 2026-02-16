@@ -88,3 +88,26 @@ def send_assignment_notification_whatsapp(mobile: str, role: str) -> dict:
     except Exception as e:
         print(f"AuthKey Assignment Notification Failed: {e}")
         return {"status": "error", "message": str(e)}
+
+import re
+import secrets
+
+def normalize_mobile(m: str) -> str:
+    """Store/search mobile in a canonical form: last 10 digits."""
+    digits = "".join(ch for ch in (m or "") if ch.isdigit())
+    if len(digits) >= 10:
+        digits = digits[-10:]
+    return digits
+
+
+def is_valid_indian_mobile(mobile: str) -> bool:
+    """Check if the string matches Indian mobile number regex (10 digits starting with 6-9)."""
+    pattern = r'^[6789]\d{9}$'
+    return bool(re.match(pattern, mobile))
+
+
+def generate_operator_username(mobile_10: str) -> str:
+    """Collision-safe username generator."""
+    suffix = mobile_10[-6:] if len(mobile_10) >= 6 else mobile_10
+    rand = secrets.token_hex(3)  # 6 hex chars
+    return f"op_{suffix}_{rand}"

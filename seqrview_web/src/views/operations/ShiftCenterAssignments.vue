@@ -41,6 +41,7 @@
                     :filters="{ shift_center: shiftCenterUid }"
                 />
                 <button 
+                    v-if="canManage"
                     @click="openImportModal"
                     :disabled="shiftCenter?.shift_details?.is_locked"
                     class="flex items-center gap-2 px-4 py-2 bg-white text-indigo-600 rounded-xl text-sm font-bold border border-indigo-200 hover:bg-indigo-50 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
@@ -51,6 +52,7 @@
                     Bulk Assign
                 </button>
                 <button 
+                    v-if="canManage"
                     @click="openAddOperatorModal"
                     :disabled="shiftCenter?.shift_details?.is_locked"
                     class="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
@@ -106,10 +108,10 @@
                         </span>
                     </td>
                     <td class="px-6 py-4 text-xs text-gray-500">
-                        {{ getTaskTime(assignment, 'Check In') }}
+                        {{ formatTime(assignment.check_in_at) }}
                     </td>
                     <td class="px-6 py-4 text-xs text-gray-500">
-                        {{ getTaskTime(assignment, 'Check Out') }}
+                        {{ formatTime(assignment.check_out_at) }}
                     </td>
                     <td class="px-6 py-4 text-right">
                          <button 
@@ -124,6 +126,7 @@
                             View
                         </button>
                         <button 
+                            v-if="canManage"
                             @click="removeAssignment(assignment)"
                             class="text-red-500 hover:text-red-700 text-sm font-bold"
                             title="Remove"
@@ -377,14 +380,21 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
+import { useAuthStore } from '../../stores/auth';
 import api from '../../api/axios';
 import BaseModal from '../../components/BaseModal.vue';
 import ExportButton from '../../components/ExportButton.vue';
 
 const route = useRoute();
 const shiftCenterUid = route.params.centerId; // Route: /operations/shift-centers/:centerId/assignments
+
+const authStore = useAuthStore();
+const canManage = computed(() => {
+    const type = authStore.user?.user_type;
+    return type === 'INTERNAL_ADMIN' || authStore.user?.is_superuser; 
+});
 
 const shiftCenter = ref(null);
 const assignments = ref([]);
@@ -408,7 +418,6 @@ const showingEnd = computed(() => Math.min(currentPage.value * pageSize.value, t
 const form = ref({
     shift_center: shiftCenterUid,
     operator: '',
-    role: '',
     role: '',
     status: 'PENDING'
 });
@@ -463,6 +472,7 @@ watch(search, () => {
 });
 
 const openAddOperatorModal = async () => {
+    if (!canManage.value) return;
     isModalOpen.value = true;
     // Load roles and operators if not loaded
     if (roles.value.length === 0) {
@@ -485,6 +495,7 @@ const closeModal = () => {
 };
 
 const assignOperator = async () => {
+    if (!canManage.value) return;
     saving.value = true;
     error.value = '';
     console.log("Submitting Assignment Form:", form.value);
@@ -508,6 +519,7 @@ const assignOperator = async () => {
 };
 
 const removeAssignment = async (assignment) => {
+    if (!canManage.value) return;
     if (!confirm('Remove this operator assignment?')) return;
     try {
         await api.delete(`/assignments/${assignment.uid}/`);
@@ -554,6 +566,7 @@ const selectedFile = ref(null);
 const fileInput = ref(null);
 
 const openImportModal = () => {
+    if (!canManage.value) return;
     isImportModalOpen.value = true;
     selectedFile.value = null;
     bulkError.value = '';
@@ -595,6 +608,13 @@ const formatDate = (dateString, fallback = 'N/A') => {
     return date.toLocaleDateString();
 };
 
+const formatTime = (dateString, fallback = '-') => {
+    if (!dateString) return fallback;
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return fallback;
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
+
 const getTaskTime = (assignment, taskNamePart) => {
     if (!assignment.tasks) return '-';
     // Find task that matches name partially (case-insensitive)
@@ -610,6 +630,7 @@ const getTaskTime = (assignment, taskNamePart) => {
 };
 
 const submitBulkAssignments = async () => {
+    if (!canManage.value) return;
     if (!selectedFile.value) return;
     
     const formData = new FormData();
@@ -628,10 +649,10 @@ const submitBulkAssignments = async () => {
         bulkResult.value = res.data;
         await loadData(currentPage.value);
         if (res.data.errors.length === 0) {
-            setTimeout(() => {
-                closeImportModal();
-                alert(`Successfully processed. Created: ${res.data.created.length}, Updated: ${res.data.updated.length}`);
-            }, 1000);
+            // Success - keep modal open to show result card
+            // Reset file selection optionally?
+            selectedFile.value = null;
+            if (fileInput.value) fileInput.value.value = '';
         }
     } catch (e) {
         bulkError.value = e.response?.data?.detail || "Failed to process bulk import. Ensure it is a valid CSV.";

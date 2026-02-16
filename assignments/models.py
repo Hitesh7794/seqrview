@@ -60,7 +60,7 @@ class OperatorAssignment(TimeStampedUUIDModel):
 
 class AssignmentTask(TimeStampedUUIDModel):
     assignment = models.ForeignKey('assignments.OperatorAssignment', on_delete=models.CASCADE, related_name='tasks')
-    shift_center_task = models.ForeignKey('operations.ShiftCenterTask', on_delete=models.PROTECT, related_name='assignment_tasks')
+    shift_center_task = models.ForeignKey('operations.ShiftCenterTask', on_delete=models.CASCADE, related_name='assignment_tasks')
     
     STATUS_CHOICES = (
         ('PENDING', 'Pending'),

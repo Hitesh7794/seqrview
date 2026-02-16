@@ -157,10 +157,23 @@ class _ReportIssueScreenState extends State<ReportIssueScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = widget.session.isDark;
+    final backgroundColor = isDark ? const Color(0xFF0C0E11) : Colors.grey[50];
+    final cardColor = isDark ? const Color(0xFF1F2937) : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.grey[400] : Colors.grey[600];
+    final borderColor = isDark ? Colors.grey[800] : Colors.grey[300];
+
     return Scaffold(
-      appBar: AppBar(title: const Text("Report Issue")),
+      backgroundColor: backgroundColor,
+      appBar: AppBar(
+        title: Text("Report Issue", style: TextStyle(color: textColor)),
+        backgroundColor: isDark ? const Color(0xFF1F2937) : Colors.indigo,
+        iconTheme: IconThemeData(color: isDark ? Colors.white : Colors.white),
+        elevation: 0,
+      ),
       body: _isLoading && _categories.isEmpty
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(child: CircularProgressIndicator(color: isDark ? Colors.white : Colors.indigo))
           : SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Form(
@@ -170,56 +183,99 @@ class _ReportIssueScreenState extends State<ReportIssueScreen> {
                   children: [
                     // Assignment Info Card
                     Card(
+                      color: cardColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(color: borderColor ?? Colors.transparent),
+                      ),
                       child: ListTile(
-                        leading: const Icon(Icons.info_outline),
-                        title: Text(widget.assignment.examName),
-                        subtitle: Text("Center: ${widget.assignment.centerName}"),
+                        leading: Icon(Icons.info_outline, color: isDark ? Colors.blueAccent : Colors.indigo),
+                        title: Text(
+                          widget.assignment.examName,
+                          style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: Text(
+                          "Center: ${widget.assignment.centerName}",
+                          style: TextStyle(color: subTextColor),
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 24),
                     
                     // 1. Category
                     DropdownButtonFormField<String>(
                       value: _selectedCategoryUid,
-                      decoration: const InputDecoration(labelText: "Category", border: OutlineInputBorder()),
+                      dropdownColor: cardColor,
+                      style: TextStyle(color: textColor),
+                      decoration: InputDecoration(
+                        labelText: "Category", 
+                        labelStyle: TextStyle(color: subTextColor),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: borderColor!),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                      ),
                       items: _categories.map((c) => DropdownMenuItem(
                         value: c.uid,
-                        child: Text(c.name),
+                        child: Text(c.name, style: TextStyle(color: textColor)),
                       )).toList(),
                       onChanged: (val) => setState(() => _selectedCategoryUid = val),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
                     
                     // 2. Priority
-                    const Text("Priority:", style: TextStyle(fontWeight: FontWeight.bold)),
-                    Row(
-                      children: [
-                        _buildPriorityRadio('LOW', 'Low', Colors.green),
-                        _buildPriorityRadio('MEDIUM', 'Medium', Colors.orange),
-                        _buildPriorityRadio('HIGH', 'High', Colors.red),
-                      ],
+                    Text("Selection Priority:", style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      decoration: BoxDecoration(
+                        color: cardColor,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: borderColor!),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          _buildPriorityRadio('LOW', 'Low', Colors.green, isDark),
+                          _buildPriorityRadio('MEDIUM', 'Medium', Colors.orange, isDark),
+                          _buildPriorityRadio('HIGH', 'High', Colors.red, isDark),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
                     
                     // 3. Description
                     TextFormField(
                       controller: _descriptionController,
                       maxLines: 4,
-                      decoration: const InputDecoration(
+                      style: TextStyle(color: textColor),
+                      decoration: InputDecoration(
                         labelText: "Description", 
-                        border: OutlineInputBorder(),
-                        hintText: "Describe the issue in detail..."
+                        labelStyle: TextStyle(color: subTextColor),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: borderColor!),
+                        ),
+                        hintText: "Describe the issue in detail...",
+                        hintStyle: TextStyle(color: isDark ? Colors.grey[600] : Colors.grey[400]),
                       ),
                       validator: (val) => val == null || val.isEmpty ? "Required" : null,
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
                     
                     // 4. Attachments
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text("Photos (Max 3):", style: TextStyle(fontWeight: FontWeight.bold)),
-                        IconButton(onPressed: _pickImage, icon: const Icon(Icons.camera_alt, color: Colors.blue)),
+                        Text("Photos (Max 3):", style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
+                        IconButton(
+                          onPressed: _pickImage, 
+                          icon: const Icon(Icons.camera_alt, color: Colors.blueAccent),
+                          tooltip: "Add Photo",
+                        ),
                       ],
                     ),
                     if (_imagePaths.isNotEmpty)
@@ -231,10 +287,11 @@ class _ReportIssueScreenState extends State<ReportIssueScreen> {
                           itemBuilder: (ctx, i) => Stack(
                             children: [
                               Container(
-                                margin: const EdgeInsets.only(right: 8),
+                                margin: const EdgeInsets.only(right: 12),
                                 width: 100,
                                 decoration: BoxDecoration(
-                                  border: Border.all(color: Colors.grey),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: borderColor!),
                                   image: DecorationImage(
                                     image: FileImage(File(_imagePaths[i])),
                                     fit: BoxFit.cover
@@ -242,12 +299,16 @@ class _ReportIssueScreenState extends State<ReportIssueScreen> {
                                 ),
                               ),
                               Positioned(
-                                right: 0, top: 0,
+                                right: 12, top: 4,
                                 child: GestureDetector(
                                   onTap: () => _removeImage(i),
                                   child: Container(
-                                    color: Colors.white.withOpacity(0.7), 
-                                    child: const Icon(Icons.close, color: Colors.red, size: 20)
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.6),
+                                      shape: BoxShape.circle,
+                                    ), 
+                                    child: const Icon(Icons.close, color: Colors.white, size: 16)
                                   ),
                                 ),
                               )
@@ -256,16 +317,22 @@ class _ReportIssueScreenState extends State<ReportIssueScreen> {
                         ),
                       ),
                     
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 32),
                     
                     SizedBox(
                       width: double.infinity,
-                      height: 50,
+                      height: 56,
                       child: ElevatedButton(
                         onPressed: _isLoading ? null : _submitReport,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isDark ? const Color(0xFF222B45) : Colors.indigo,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          elevation: 2,
+                        ),
                         child: _isLoading 
                           ? const CircularProgressIndicator(color: Colors.white) 
-                          : const Text("Submit Report"),
+                          : const Text("Submit Report", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                       ),
                     )
                   ],
@@ -275,8 +342,9 @@ class _ReportIssueScreenState extends State<ReportIssueScreen> {
     );
   }
 
-  Widget _buildPriorityRadio(String value, String label, Color color) {
+  Widget _buildPriorityRadio(String value, String label, Color color, bool isDark) {
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Radio<String>(
           value: value,
@@ -284,8 +352,13 @@ class _ReportIssueScreenState extends State<ReportIssueScreen> {
           onChanged: (val) => setState(() => _selectedPriority = val!),
           activeColor: color,
         ),
-        Text(label, style: TextStyle(color: _selectedPriority == value ? color : Colors.black)),
-        const SizedBox(width: 8),
+        Text(
+          label, 
+          style: TextStyle(
+            color: _selectedPriority == value ? color : (isDark ? Colors.grey[400] : Colors.black87),
+            fontWeight: _selectedPriority == value ? FontWeight.bold : FontWeight.normal,
+          )
+        ),
       ],
     );
   }

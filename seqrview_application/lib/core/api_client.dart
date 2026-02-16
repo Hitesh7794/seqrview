@@ -123,14 +123,23 @@ class ApiClient {
     }
   }
 
-  Future<void> checkOut(String assignmentId, double lat, double long) async {
+  Future<void> checkOut(String assignmentId, double lat, double long, String? imagePath) async {
     try {
-      await dio.post('/api/attendance/logs/', data: {
+      final formData = FormData.fromMap({
         "assignment_id": assignmentId,
         "activity_type": "CHECK_OUT",
         "latitude": lat,
         "longitude": long,
       });
+
+      if (imagePath != null) {
+        formData.files.add(MapEntry(
+          "selfie",
+          await MultipartFile.fromFile(imagePath, filename: "selfie.jpg"),
+        ));
+      }
+
+      await dio.post('/api/attendance/logs/', data: formData);
     } catch (e) {
       if (e is DioException) {
         throw Exception(e.response?.data?['detail'] ?? "Check-out failed");
@@ -214,6 +223,26 @@ class ApiClient {
       throw Exception("Report failed: $e");
     }
   }
+  // --- Notifications ---
+
+  Future<List<dynamic>> getNotifications() async {
+    final response = await dio.get('/api/notifications/');
+    return response.data;
+  }
+
+  Future<void> markRead(String uid) async {
+    await dio.post('/api/notifications/$uid/mark-read/');
+  }
+
+  Future<void> markAllRead() async {
+    await dio.post('/api/notifications/mark-all-read/');
+  }
+
+  Future<int> getUnreadCount() async {
+    final response = await dio.get('/api/notifications/unread-count/');
+    return response.data['unread_count'] ?? 0;
+  }
+
   Future<void> logout() async {
     try {
       final refresh = await storage.getRefresh();

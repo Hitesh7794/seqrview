@@ -62,11 +62,12 @@ class ExamCenterSerializer(serializers.ModelSerializer):
 class ShiftCenterSerializer(serializers.ModelSerializer):
     exam_center_details = ExamCenterSerializer(source='exam_center', read_only=True)
     shift_details = ShiftSerializer(source='shift', read_only=True)
+    tasks_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = ShiftCenter
         fields = '__all__'
-        read_only_fields = ('uid', 'created_at', 'updated_at')
+        read_only_fields = ('uid', 'created_at', 'updated_at', 'tasks_count')
 
     def validate(self, attrs):
         # Check if Shift is locked when creating/updating shift center

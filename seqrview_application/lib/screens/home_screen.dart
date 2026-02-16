@@ -4,6 +4,7 @@ import '../app/session_controller.dart';
 import '../models/assignment.dart'; // Restored
 import '../widgets/global_support_button.dart';
 import 'duties/my_duties_screen.dart';
+import 'notifications_screen.dart';
 import '../core/config.dart';
 
 
@@ -62,6 +63,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // Insights State
   String _totalHours = "0h";
   String _attendance = "0%";
+  int _unreadCount = 0;
 
 
 
@@ -76,9 +78,11 @@ class _HomeScreenState extends State<HomeScreen> {
       final profileRes = await widget.session.api.dio.get('/api/operators/profile/');
       final userRes = await widget.session.api.dio.get('/api/identity/me/');
       final dutiesRes = await widget.session.api.getMyDuties();
+      final unreadRes = await widget.session.api.getUnreadCount();
 
       if (mounted) {
         setState(() {
+          _unreadCount = unreadRes;
           _profileData = profileRes.data as Map<String, dynamic>?;
           _userData = userRes.data as Map<String, dynamic>?;
           
@@ -201,14 +205,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final textColor = isDark ? Colors.white : const Color(0xFF111827);
     final subTextColor = isDark ? Colors.grey[400] : Colors.grey[500];
     
-    // Header Colors
-    final headerGradient = LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: isDark 
-          ? [const Color(0xFF1F2937), const Color(0xFF111827)] // Dark Gradient
-          : [const Color(0xFFFFFFFF), const Color(0xFFE5E7EB)], // White -> Light Grey
-    );
+    // Header Section (Gradient Removed)
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -249,22 +246,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 )
               : Stack(
                   children: [
-                    // -- 1. Background Header --
-                    Container(
-                      height: 250,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        gradient: headerGradient,
-                        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)),
-                        boxShadow: [
-                          if (!isDark) 
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.05),
-                              blurRadius: 10, offset: const Offset(0, 5)
-                            )
-                        ]
-                      ),
-                    ),
+                    // -- 1. Background Header Removed --
 
                     // -- 2. Scrollable Content --
                     SafeArea(
@@ -287,27 +269,53 @@ class _HomeScreenState extends State<HomeScreen> {
                                     Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        GlobalSupportButton(isDark: _isDark),
+                                        _buildHeaderIcon(
+                                          child: GlobalSupportButton(isDark: _isDark),
+                                          isDark: isDark,
+                                        ),
                                         const SizedBox(width: 8),
-                                        Container(
-                                          decoration: BoxDecoration(
-                                            color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05),
-                                            shape: BoxShape.circle,
-                                          ),
+                                        _buildHeaderIcon(
                                           child: IconButton(
                                             visualDensity: VisualDensity.compact,
                                             padding: EdgeInsets.zero,
                                             constraints: const BoxConstraints(),
                                             style: IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
                                             onPressed: () {
-                                              // TODO: Open Notifications
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                const SnackBar(content: Text("Notifications coming soon!")),
-                                              );
+                                              Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (context) => NotificationsScreen(session: widget.session),
+                                                ),
+                                              ).then((_) => _loadData()); 
                                             },
-                                            icon: Icon(Icons.notifications_outlined, color: isDark ? Colors.white : const Color(0xFF111827)),
-                                            tooltip: 'Notifications',
+                                            icon: Stack(
+                                              clipBehavior: Clip.none,
+                                              children: [
+                                                Icon(
+                                                  Icons.notifications_outlined, 
+                                                  color: isDark ? Colors.white : const Color(0xFF111827),
+                                                  size: 22,
+                                                ),
+                                                if (_unreadCount > 0)
+                                                  Positioned(
+                                                    right: -2,
+                                                    top: -2,
+                                                    child: Container(
+                                                      padding: const EdgeInsets.all(4),
+                                                      decoration: const BoxDecoration(
+                                                        color: Colors.red,
+                                                        shape: BoxShape.circle,
+                                                      ),
+                                                      constraints: const BoxConstraints(
+                                                        minWidth: 12,
+                                                        minHeight: 12,
+                                                      ),
+                                                    ),
+                                                  ),
+                                              ],
+                                            ),
                                           ),
+                                          isDark: isDark,
                                         ),
                                       ],
                                     ),
@@ -423,7 +431,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  "Upcoming Duties",
+                                  "Recent Duties",
                                   style: TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
@@ -680,5 +688,17 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       );
     }
+
+  Widget _buildHeaderIcon({required Widget child, required bool isDark}) {
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05),
+        shape: BoxShape.circle,
+      ),
+      child: Center(child: child),
+    );
   }
+}
 

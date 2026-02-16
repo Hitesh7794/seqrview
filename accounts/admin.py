@@ -12,7 +12,7 @@ class AppUserAdmin(BaseUserAdmin):
     fieldsets = (
         (None, {"fields": ("username", "password")}),
         ("Personal info", {"fields": ("full_name", "first_name", "middle_name", "last_name", "email", "mobile_primary")}),
-        ("Business", {"fields": ("user_type", "status")}),
+        ("Business", {"fields": ("user_type", "status", "client", "exam")}),
         ("Permissions", {"fields": ("is_active", "is_staff", "is_superuser", "groups", "user_permissions")}),
         ("Important dates", {"fields": ("last_login",)}),
     )

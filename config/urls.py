@@ -3,8 +3,8 @@ from django.urls import path, include
 from django.http import JsonResponse
 from django.conf import settings
 from django.conf.urls.static import static
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
-from accounts.views import BlacklistTokenView, MeView
+from rest_framework_simplejwt.views import TokenRefreshView
+from accounts.views import BlacklistTokenView, MeView, CustomTokenObtainPairView
 
 def health(_request):
     return JsonResponse({"ok": True})
@@ -14,7 +14,7 @@ urlpatterns = [
     path("api/health/", health),
 
     # Auth
-    path("api/auth/token/", TokenObtainPairView.as_view()),
+    path("api/auth/token/", CustomTokenObtainPairView.as_view()),
     path("api/auth/token/refresh/", TokenRefreshView.as_view()),
     path("api/auth/logout/", BlacklistTokenView.as_view()),
     path("api/auth/me/", MeView.as_view()),
@@ -33,6 +33,7 @@ urlpatterns = [
     path("api/attendance/", include("attendance.urls")),
     path("api/support/", include("support.urls")),
     path("api/reports/", include("reports.urls")),
+    path('api/notifications/', include('notifications.urls')),
 ]
 
 # Serve media files in development

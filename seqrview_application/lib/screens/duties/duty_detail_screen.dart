@@ -244,6 +244,7 @@ class _DutyDetailScreenState extends State<DutyDetailScreen> {
   }
 
   Future<void> _pickEvidence(String taskUid, String type) async {
+      if (_isReadOnly()) return;
       final picker = ImagePicker();
       XFile? file;
       if (type == 'VIDEO') {
@@ -263,6 +264,7 @@ class _DutyDetailScreenState extends State<DutyDetailScreen> {
   }
 
   Future<void> _submitEvidence(String taskUid) async {
+      if (_isReadOnly()) return;
       final files = _pendingFiles[taskUid];
       if (files == null || files.isEmpty) return;
       
@@ -279,11 +281,34 @@ class _DutyDetailScreenState extends State<DutyDetailScreen> {
       });
   }
 
+  bool _isExpired() {
+    final a = widget.assignment;
+    if (a.shiftCenter.shift.workDate.isEmpty) return false;
+    try {
+      final datePart = DateTime.parse(a.shiftCenter.shift.workDate);
+      final timeParts = a.shiftCenter.shift.endTime.split(':');
+      final endDateTime = DateTime(
+        datePart.year, datePart.month, datePart.day,
+        int.parse(timeParts[0]), int.parse(timeParts[1])
+      );
+      return DateTime.now().isAfter(endDateTime);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  bool _isReadOnly() {
+    if (widget.assignment.isCompleted) return true;
+    return _isExpired();
+  }
+
   Widget _buildTaskItem(dynamic task) {
     bool isCompleted = task['status'] == 'COMPLETED';
     bool isMandatory = task['is_mandatory'] == true;
     String taskType = task['task_type'] ?? 'CHECKLIST';
     List<XFile> pending = _pendingFiles[task['uid']] ?? [];
+    
+    bool readOnly = _isReadOnly();
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -304,8 +329,10 @@ class _DutyDetailScreenState extends State<DutyDetailScreen> {
                       scale: 1.2,
                       child: Checkbox(
                         value: isCompleted,
-                        onChanged: isCompleted ? null : (v) {
-                          if (v == true) _completeTask(task['uid']);
+                        onChanged: readOnly ? null : (v) {
+                          if (v == true) {
+                            _completeTask(task['uid']);
+                          }
                         },
                         activeColor: Colors.green,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
@@ -328,8 +355,8 @@ class _DutyDetailScreenState extends State<DutyDetailScreen> {
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
-                            color: isCompleted ? Colors.grey : Colors.black87,
-                            decoration: isCompleted ? TextDecoration.lineThrough : null,
+                            color: (isCompleted && readOnly) ? Colors.grey : Colors.black87,
+                            decoration: (isCompleted && readOnly) ? TextDecoration.lineThrough : null,
                           ),
                         ),
                         if (task['description'] != null && task['description'].toString().isNotEmpty)
@@ -358,28 +385,28 @@ class _DutyDetailScreenState extends State<DutyDetailScreen> {
                     ),
                   ),
 
-                  // Action Buttons for Photo/Video
-                  if (!isCompleted && taskType != 'CHECKLIST') ...[
+                  // Action Buttons for Photo/Video (Allow if not read-only)
+                  if (!readOnly && taskType != 'CHECKLIST') ...[
                       IconButton(
                         onPressed: () => _pickEvidence(task['uid'], taskType),
                         icon: Icon(
                            taskType == 'VIDEO' ? Icons.videocam_outlined : Icons.add_a_photo_outlined,
                            color: Colors.indigo,
                         ),
-                        tooltip: "Add Evidence",
+                        tooltip: isCompleted ? "Update Evidence" : "Add Evidence",
                       ),
                   ]
               ],
             ),
 
-            // Pending Evidence Preview
-            if (pending.isNotEmpty && !isCompleted)
+            // Pending Evidence Preview (Only show submit button if not read-only)
+            if (pending.isNotEmpty)
                Container(
                  margin: const EdgeInsets.only(top: 12),
                  height: 80,
                  child: ListView.builder(
                    scrollDirection: Axis.horizontal,
-                   itemCount: pending.length + 1, // +1 for submit button flow or just list
+                   itemCount: pending.length + (readOnly ? 0 : 1), 
                    itemBuilder: (context, index) {
                       if (index == pending.length) {
                           // Submit Button
@@ -401,8 +428,7 @@ class _DutyDetailScreenState extends State<DutyDetailScreen> {
                       }
                       
                       final file = pending[index];
-                      // Simple thumbnail based on type
-                      bool isVideo = file.path.toLowerCase().endsWith('.mp4') || taskType == 'VIDEO'; // rough check
+                      bool isVideo = file.path.toLowerCase().endsWith('.mp4') || taskType == 'VIDEO';
 
                       return Stack(
                         children: [
@@ -413,19 +439,20 @@ class _DutyDetailScreenState extends State<DutyDetailScreen> {
                                 color: Colors.grey[200],
                                 borderRadius: BorderRadius.circular(8),
                                 image: isVideo ? null : DecorationImage(
-                                   image: FileImage(IO.File(file.path)), // Need dart:io import
+                                   image: FileImage(IO.File(file.path)), 
                                    fit: BoxFit.cover
                                 )
                             ),
                             child: isVideo ? const Center(child: Icon(Icons.videocam, color: Colors.grey)) : null,
                           ),
-                          Positioned(
-                            top: -4, right: 4,
-                            child: GestureDetector(
-                              onTap: () => _removePendingFile(task['uid'], index),
-                              child: const CircleAvatar(radius: 10, backgroundColor: Colors.red, child: Icon(Icons.close, size: 12, color: Colors.white)),
-                            ),
-                          )
+                          if (!readOnly)
+                            Positioned(
+                              top: -4, right: 4,
+                              child: GestureDetector(
+                                onTap: () => _removePendingFile(task['uid'], index),
+                                child: const CircleAvatar(radius: 10, backgroundColor: Colors.red, child: Icon(Icons.close, size: 12, color: Colors.white)),
+                              ),
+                            )
                         ],
                       );
                    }

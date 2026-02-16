@@ -22,6 +22,11 @@ api.interceptors.response.use(
     async (error) => {
         const originalRequest = error.config;
 
+        // Skip interceptor for login endpoint itself to allow component to handle 401
+        if (originalRequest.url.includes('/auth/token/') && !originalRequest.url.includes('refresh')) {
+            return Promise.reject(error);
+        }
+
         // If error is 401 and we haven't tried to refresh yet
         if (error.response && error.response.status === 401 && !originalRequest._retry) {
             originalRequest._retry = true;
@@ -51,8 +56,11 @@ api.interceptors.response.use(
                 }
             } else {
                 // No refresh token available, just logout
-                localStorage.clear();
-                window.location.href = '/login';
+                // Only redirect if not already on login page to avoid loops
+                if (!window.location.pathname.includes('/login')) {
+                    localStorage.clear();
+                    window.location.href = '/login';
+                }
             }
         }
 

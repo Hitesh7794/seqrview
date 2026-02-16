@@ -37,12 +37,14 @@
             </div>
             <div class="flex items-center gap-3">
                  <button 
+                    v-if="canManage"
                     @click="openBulkTaskModal"
                     :disabled="shift?.is_locked"
                     class="flex items-center gap-2 px-4 py-2 bg-white text-indigo-600 rounded-xl text-sm font-bold border border-indigo-200 hover:bg-indigo-50 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 0 00-2 2v12a2 0 002 2h10a2 0 002-2V7a2 0 00-2-2h-2M9 5a2 0 002 2h2a2 0 002-2M9 5a2 0 012-2h2a2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
                     Bulk Task Config
                 </button>
@@ -52,6 +54,7 @@
                     :filters="{ shift: shiftUid }"
                 />
                 <button 
+                    v-if="canManage"
                     @click="openImportModal"
                     :disabled="shift?.is_locked"
                     class="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
@@ -62,6 +65,7 @@
                     Import Centers
                 </button>
                  <button 
+                    v-if="canManage"
                     @click="openAddCenterModal"
                     :disabled="shift?.is_locked"
                     class="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
@@ -98,7 +102,8 @@
                 <tr>
                     <th class="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-500">Center Details</th>
                     <th class="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-500">City</th>
-                    <th class="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-500">Capacity</th>
+                    <th class="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-500">Required</th>
+                    <th class="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-500">Assigned Tasks</th>
                      <th class="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-500">Task Config</th>
                     <th class="px-6 py-4 text-right text-[10px] font-black uppercase tracking-widest text-gray-500">Actions</th>
                 </tr>
@@ -106,14 +111,17 @@
             <tbody class="divide-y divide-gray-100 bg-white">
             <tr v-for="center in centers" :key="center.uid" class="hover:bg-indigo-50/20 transition-colors group">
                      <td class="px-6 py-4">
-                        <div class="font-bold text-gray-900">{{ center.exam_center_details.client_center_name }}</div>
+                        <div class="font-bold text-gray-900">{{ center.center_name || center.exam_center_details.client_center_name }}</div>
                         <div class="text-xs text-gray-400 mt-0.5 font-mono">{{ center.exam_center_details.client_center_code }}</div>
                     </td>
                     <td class="px-6 py-4 text-sm text-gray-600">
-                        {{ center.exam_center_details.city || '-' }}
+                        {{ center.city || center.exam_center_details.city || '-' }}
                     </td>
-                     <td class="px-6 py-4 text-sm text-gray-700 font-medium">
-                        {{ center.exam_center_details.active_capacity || 0 }}
+                    <td class="px-6 py-4 text-sm text-gray-700 font-medium font-mono">
+                        {{ center.operators_required || center.exam_center_details.operators_required || 0 }}
+                    </td>
+                    <td class="px-6 py-4 text-sm font-black text-indigo-600">
+                        {{ center.tasks_count || 0 }}
                     </td>
                     <td class="px-6 py-4">
                          <span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-600">
@@ -122,12 +130,13 @@
                     </td>
                     <td class="px-6 py-4 text-right">
                          <button 
-                            @click="$router.push(`/operations/shift-centers/${center.uid}/assignments`)"
+                            @click="navigateToAssignments(center)"
                             class="text-indigo-600 hover:text-indigo-800 text-sm font-bold mr-4"
                         >
-                            Assign Operators
+                            {{ canManage ? 'Assign Operators' : 'Assignments' }}
                         </button>
                         <button 
+                            v-if="canManage"
                             @click="openTaskModal(center)"
                             :disabled="shift?.is_locked"
                             class="text-gray-400 hover:text-gray-600 text-sm font-bold disabled:opacity-30 disabled:cursor-not-allowed"
@@ -281,6 +290,14 @@
         @close="isTaskModalOpen = false"
     />
 
+    <BulkTaskConfigModal 
+        :visible="isBulkTaskModalOpen" 
+        :shiftId="shiftUid"
+        :shiftName="shift?.name"
+        @close="isBulkTaskModalOpen = false"
+        @success="(msg) => toast.trigger(msg, 'success')"
+    />
+
     <!-- Single Center Add Modal -->
     <BaseModal :isOpen="isAddModalOpen" title="Add Single Center" @close="closeAddCenterModal">
         <div class="space-y-4">
@@ -308,8 +325,8 @@
 
             <div class="grid grid-cols-2 gap-4">
                 <div>
-                     <label class="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1">Active Capacity <span class="text-red-500">*</span></label>
-                     <input v-model="addCenterForm.active_capacity" type="number" class="w-full rounded-xl border-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm" placeholder="e.g. 100">
+                     <label class="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1">Required Operators <span class="text-red-500">*</span></label>
+                     <input v-model="addCenterForm.operators_required" type="number" class="w-full rounded-xl border-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm" placeholder="e.g. 2">
                 </div>
                  <div>
                      <label class="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1">Incharge Name <span class="text-red-500">*</span></label>
@@ -349,19 +366,26 @@
 
   </div>
 </template>
-
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { ref, computed, onMounted, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { useAuthStore } from '../../stores/auth';
 import api from '../../api/axios';
 import BaseModal from '../../components/BaseModal.vue';
-import ToastNotification from '../../components/ToastNotification.vue';
-
 import ExportButton from '../../components/ExportButton.vue';
-import TaskConfigModal from './TaskConfigModal.vue';
+import ToastNotification from '../../components/ToastNotification.vue';
+import TaskConfigModal from '../../components/TaskConfigModal.vue';
+import BulkTaskConfigModal from '../../components/BulkTaskConfigModal.vue';
 
 const route = useRoute();
+const router = useRouter();
 const shiftUid = route.params.shiftId; // Assuming route is configured as /operations/shifts/:shiftId/centers
+
+const authStore = useAuthStore();
+const canManage = computed(() => {
+    const type = authStore.user?.user_type;
+    return type === 'INTERNAL_ADMIN' || authStore.user?.is_superuser; 
+});
 
 const shift = ref(null);
 const centers = ref([]);
@@ -449,6 +473,7 @@ watch(search, () => {
 });
 
 const openImportModal = () => {
+    if (!canManage.value) return;
     isImportModalOpen.value = true;
     selectedFile.value = null;
     bulkError.value = '';
@@ -467,7 +492,7 @@ const addCenterForm = ref({
     client_center_code: '',
     client_center_name: '',
     city: '',
-    active_capacity: '',
+    operators_required: '',
     address: '',
     latitude: '',
     longitude: '',
@@ -476,12 +501,13 @@ const addCenterForm = ref({
 });
 
 const openAddCenterModal = () => {
+    if (!canManage.value) return;
     isAddModalOpen.value = true;
     addCenterForm.value = {
         client_center_code: '',
         client_center_name: '',
         city: '',
-        active_capacity: '',
+        operators_required: '',
         address: '',
         latitude: '',
         longitude: '',
@@ -495,6 +521,7 @@ const closeAddCenterModal = () => {
 };
 
 const submitAddCenter = async () => {
+    if (!canManage.value) return;
     const form = addCenterForm.value;
     if (!form.client_center_code) {
         if (toast.value) toast.value.trigger("Client Center Code is required", "error");
@@ -509,8 +536,8 @@ const submitAddCenter = async () => {
         if (toast.value) toast.value.trigger("City is required", "error");
         return;
     }
-    if (!form.active_capacity) {
-        if (toast.value) toast.value.trigger("Active Capacity is required", "error");
+    if (!form.operators_required) {
+        if (toast.value) toast.value.trigger("Required Operators count is required", "error");
         return;
     }
     if (!form.incharge_name) {
@@ -537,7 +564,8 @@ const submitAddCenter = async () => {
             ...addCenterForm.value,
             latitude: addCenterForm.value.latitude,
             longitude: addCenterForm.value.longitude,
-            active_capacity: addCenterForm.value.active_capacity,
+            active_capacity: addCenterForm.value.operators_required,
+            operators_required: addCenterForm.value.operators_required,
         };
 
         await api.post('/operations/shift-centers/add-center/', payload);
@@ -590,6 +618,7 @@ const downloadTemplate = async () => {
 };
 
 const submitBulkCenters = async () => {
+    if (!canManage.value) return;
     if (!selectedFile.value) return;
     
     const formData = new FormData();
@@ -632,12 +661,33 @@ const isTaskModalOpen = ref(false);
 const selectedTaskCenter = ref(null);
 
 const openTaskModal = (center) => {
+    if (!canManage.value) return;
     selectedTaskCenter.value = center;
     isTaskModalOpen.value = true;
 };
 
+const isBulkTaskModalOpen = ref(false);
+
 const openBulkTaskModal = () => {
-    if (toast.value) toast.value.trigger("Bulk task config coming soon.", "info");
+    if (!canManage.value) return;
+    isBulkTaskModalOpen.value = true;
+};
+
+
+const navigateToAssignments = (center) => {
+    // Check if we are in Exam Console mode (URL starts with /exam/)
+    if (route.path.startsWith('/exam/')) {
+        // We need to extract the exam code from the current route params
+        // Since we are at /exam/:code/shifts/:shiftId/centers
+        // route.params should have `code` available
+        const code = route.params.code;
+        if (code) {
+             router.push(`/exam/${code}/shift-centers/${center.uid}/assignments`);
+             return;
+        }
+    }
+    // Default fallback
+    router.push(`/operations/shift-centers/${center.uid}/assignments`);
 };
 
 onMounted(() => loadData(1));

@@ -160,3 +160,18 @@ class OperatorOtpRequestSerializer(serializers.Serializer):
 class OperatorOtpVerifySerializer(serializers.Serializer):
     otp_session_uid = serializers.UUIDField()
     otp = serializers.CharField(min_length=4, max_length=10)
+
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer as BaseTokenObtainPairSerializer
+from rest_framework.exceptions import AuthenticationFailed
+
+class CustomTokenObtainPairSerializer(BaseTokenObtainPairSerializer):
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        
+        # Check Exam Expiry for EXAM_ADMIN
+        if getattr(self.user, 'user_type', '') == 'EXAM_ADMIN' and getattr(self.user, 'exam', None):
+            # Check if exam is locked (end date passed)
+            if self.user.exam.is_locked:
+                 raise AuthenticationFailed("This exam has concluded. Access is now closed because the exam end date has passed.")
+        
+        return data

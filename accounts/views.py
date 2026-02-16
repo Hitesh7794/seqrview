@@ -31,27 +31,7 @@ from .serializers import (
 
 User = get_user_model()
 
-import re
-
-def _normalize_mobile(m: str) -> str:
-    """Store/search mobile in a canonical form: last 10 digits."""
-    digits = "".join(ch for ch in (m or "") if ch.isdigit())
-    if len(digits) >= 10:
-        digits = digits[-10:]
-    return digits
-
-
-def is_valid_indian_mobile(mobile: str) -> bool:
-    """Check if the string matches Indian mobile number regex (10 digits starting with 6-9)."""
-    pattern = r'^[6789]\d{9}$'
-    return bool(re.match(pattern, mobile))
-
-
-def _generate_operator_username(mobile_10: str) -> str:
-    """Collision-safe username generator."""
-    suffix = mobile_10[-6:] if len(mobile_10) >= 6 else mobile_10
-    rand = secrets.token_hex(3)  # 6 hex chars
-    return f"op_{suffix}_{rand}"
+from .utils import normalize_mobile, is_valid_indian_mobile, generate_operator_username
 
 
 
@@ -95,7 +75,7 @@ class OperatorOtpRequestView(APIView):
         ser = OperatorOtpRequestSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
 
-        mobile = _normalize_mobile(ser.validated_data["mobile"])
+        mobile = normalize_mobile(ser.validated_data["mobile"])
         if not is_valid_indian_mobile(mobile):
             return Response({"detail": "Invalid Indian mobile number. Must be 10 digits starting with 6-9."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -110,7 +90,7 @@ class OperatorOtpRequestView(APIView):
         if not user:
             user = None
             for _ in range(7): 
-                username = _generate_operator_username(mobile)
+                username = generate_operator_username(mobile)
                 try:
                     with transaction.atomic():
                         user = User.objects.create_user(
@@ -256,12 +236,26 @@ class AppUserViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        from django.db.models import Q
+        
         if user.user_type == 'CLIENT_ADMIN' and user.client:
-            return User.objects.filter(client=user.client).order_by('-created_at')
+            # Client Admin: Linked to client OR assigned to any exam of this client
+            return User.objects.filter(
+                Q(client=user.client) | 
+                Q(assignments__shift_center__shift__exam__client=user.client, user_type='OPERATOR')
+            ).distinct().order_by('-created_at')
+            
+        elif user.user_type == 'EXAM_ADMIN' and user.exam:
+             # Exam Admin: Linked to client OR assigned to this exam
+             return User.objects.filter(
+                 Q(client=user.exam.client) | 
+                 Q(assignments__shift_center__shift__exam=user.exam, user_type='OPERATOR')
+             ).distinct().order_by('-created_at')
+             
         elif user.user_type == 'INTERNAL_ADMIN' or user.is_superuser:
             queryset = User.objects.all().order_by('-created_at')
-            # user_type filter is now handled by DjangoFilterBackend if passed as query param
             return queryset
+            
         return User.objects.none()
 
     def get_serializer_class(self):
@@ -289,7 +283,7 @@ class AppUserViewSet(viewsets.ModelViewSet):
         if not mobile:
             return Response({"detail": "Mobile number is required."}, status=status.HTTP_400_BAD_REQUEST)
         
-        mobile_10 = _normalize_mobile(mobile)
+        mobile_10 = normalize_mobile(mobile)
         if not is_valid_indian_mobile(mobile_10):
              return Response({"detail": "Invalid Indian mobile number. Please provide a 10-digit number starting with 6-9."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -300,12 +294,12 @@ class AppUserViewSet(viewsets.ModelViewSet):
         # Create placeholder user
         try:
             with transaction.atomic():
-                username = _generate_operator_username(mobile_10)
+                username = generate_operator_username(mobile_10)
                 # Ensure username uniqueness (though generator is collision-safe, good to be safe)
                 for _ in range(5):
                     if not User.objects.filter(username=username).exists():
                         break
-                    username = _generate_operator_username(mobile_10)
+                    username = generate_operator_username(mobile_10)
 
                 user = User.objects.create_user(
                     username=username,
@@ -399,7 +393,7 @@ class AppUserViewSet(viewsets.ModelViewSet):
                 m = row.get('mobile')
                 name = row.get('name', '').strip()
 
-                mobile_10 = _normalize_mobile(str(m))
+                mobile_10 = normalize_mobile(str(m))
                 if not is_valid_indian_mobile(mobile_10):
                     results["errors"].append({"mobile": m, "reason": "Invalid Indian mobile number."})
                     continue
@@ -409,11 +403,11 @@ class AppUserViewSet(viewsets.ModelViewSet):
                     continue
                 
                 try:
-                    username = _generate_operator_username(mobile_10)
+                    username = generate_operator_username(mobile_10)
                     for _ in range(5):
                         if not User.objects.filter(username=username).exists():
                             break
-                        username = _generate_operator_username(mobile_10)
+                        username = generate_operator_username(mobile_10)
 
                     user = User.objects.create_user(
                         username=username,
@@ -454,3 +448,9 @@ class BlacklistTokenView(APIView):
             return Response(status=status.HTTP_205_RESET_CONTENT)
         except Exception:
             return Response(status=status.HTTP_400_BAD_REQUEST)
+
+from rest_framework_simplejwt.views import TokenObtainPairView
+from .serializers import CustomTokenObtainPairSerializer
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer

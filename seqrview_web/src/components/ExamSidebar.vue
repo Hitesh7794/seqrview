@@ -37,7 +37,8 @@ import {
   ClockIcon, 
   MapPinIcon,
   DocumentChartBarIcon,
-  ChevronLeftIcon
+  ChevronLeftIcon,
+  UserGroupIcon
 } from '@heroicons/vue/24/outline';
 
 import { useRoute } from 'vue-router';
@@ -52,9 +53,10 @@ const navItems = computed(() => {
 
     return [
         { name: 'Exam Dashboard', path: `/exam/${code}`, icon: Squares2X2Icon },
-        { name: 'Manage Shifts', path: `/exam/${code}/shifts`, icon: ClockIcon },
+        { name: 'Exam Shifts', path: `/exam/${code}/shifts`, icon: ClockIcon },
         { name: 'Exam Centers', path: `/exam/${code}/centers`, icon: MapPinIcon },
-        { name: 'Live Reports', path: `/exam/${code}/reports`, icon: DocumentChartBarIcon },
+        { name: 'Exam Operators', path: `/exam/${code}/operators`, icon: UserGroupIcon },
+        // { name: 'Live Reports', path: `/exam/${code}/reports`, icon: DocumentChartBarIcon },
         // { name: 'Back to Admin', path: '/operations/exams', icon: ChevronLeftIcon, roles: ['INTERNAL_ADMIN', 'CLIENT_ADMIN'] }
     ].filter(item => {
         if (item.name === 'Back to Admin') {

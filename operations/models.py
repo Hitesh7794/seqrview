@@ -154,7 +154,7 @@ class Shift(TimeStampedUUIDModel):
     
     class Meta:
         db_table = 'shift'
-        unique_together = [['exam', 'shift_code']]
+        unique_together = [['exam', 'shift_code', 'work_date']]
         indexes = [
             models.Index(fields=['exam', 'work_date']),
             models.Index(fields=['status']),
@@ -167,25 +167,18 @@ class Shift(TimeStampedUUIDModel):
     def is_locked(self):
         """
         Locks the shift if the end time has passed.
+        Uses the configured TIME_ZONE (Asia/Kolkata).
         """
         from django.utils import timezone
         import datetime
         
-        # Combine work_date and end_time to get full datetime
-        # Naive datetime handling: assume input is local, compare with local now? 
-        # Better: make it timezone aware if possible, or stick to configured timezone.
-        # Django's timezone.now() is aware. self.work_date is date.
-        
         current_datetime = timezone.now()
         
-        # Create a datetime from work_date and end_time
+        # Combine work_date and end_time to get full local datetime
         shift_end_naive = datetime.datetime.combine(self.work_date, self.end_time)
         
-        # Make it aware matching current_datetime's timezone if configured
-        if settings.USE_TZ:
-            shift_end_aware = timezone.make_aware(shift_end_naive, timezone.get_current_timezone())
-        else:
-            shift_end_aware = shift_end_naive
+        # Correctly make it aware using the project's current timezone (Asia/Kolkata)
+        shift_end_aware = timezone.make_aware(shift_end_naive, timezone.get_current_timezone())
             
         return shift_end_aware < current_datetime
 
@@ -212,6 +205,7 @@ class ExamCenter(TimeStampedUUIDModel):
     
     
     active_capacity = models.IntegerField(null=True, blank=True)
+    operators_required = models.IntegerField(null=True, blank=True)
     expected_candidates = models.IntegerField(default=0)
     city = models.CharField(max_length=100, null=True, blank=True)
     
@@ -359,6 +353,17 @@ class ShiftCenter(TimeStampedUUIDModel):
     exam = models.ForeignKey('Exam', on_delete=models.CASCADE, related_name='shift_centers')
     shift = models.ForeignKey('Shift', on_delete=models.CASCADE, related_name='shift_centers')
     exam_center = models.ForeignKey('ExamCenter', on_delete=models.CASCADE, related_name='shift_centers')
+    
+    operators_required = models.IntegerField(null=True, blank=True)
+    
+    # Metadata Snapshots (Shift-specific isolation)
+    center_name = models.CharField(max_length=255, null=True, blank=True)
+    city = models.CharField(max_length=100, null=True, blank=True)
+    address = models.TextField(null=True, blank=True)
+    latitude = models.DecimalField(max_digits=10, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=10, decimal_places=6, null=True, blank=True)
+    incharge_name = models.CharField(max_length=150, null=True, blank=True)
+    incharge_phone = models.CharField(max_length=20, null=True, blank=True)
     
     notes = models.TextField(null=True, blank=True)
     

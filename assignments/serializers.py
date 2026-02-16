@@ -24,12 +24,22 @@ class AssignmentTaskSerializer(serializers.ModelSerializer):
 
 class OperatorAssignmentSerializer(serializers.ModelSerializer):
     tasks = AssignmentTaskSerializer(many=True, read_only=True)
+    check_in_at = serializers.SerializerMethodField()
+    check_out_at = serializers.SerializerMethodField()
     
     class Meta:
         model = OperatorAssignment
         fields = '__all__'
         read_only_fields = ('uid', 'created_at', 'updated_at', 'assigned_at')
         depth = 3
+
+    def get_check_in_at(self, obj):
+        log = obj.attendance_logs.filter(activity_type='CHECK_IN').order_by('timestamp').first()
+        return log.timestamp if log else None
+
+    def get_check_out_at(self, obj):
+        log = obj.attendance_logs.filter(activity_type='CHECK_OUT').order_by('-timestamp').first()
+        return log.timestamp if log else None
 
 class OperatorAssignmentCreateSerializer(serializers.ModelSerializer):
     shift_center = serializers.SlugRelatedField(
@@ -61,14 +71,14 @@ class OperatorAssignmentCreateSerializer(serializers.ModelSerializer):
                     f"Cannot assign operator. The shift '{shift_center.shift.shift_code}' is locked (past end time)."
                 )
 
-            # Check for existing active assignment
+            # Check for existing active assignment in the entire shift (across all centers)
             exists = OperatorAssignment.objects.filter(
                 operator=operator,
-                shift_center=shift_center
+                shift_center__shift=shift_center.shift
             ).exclude(status='CANCELLED').exists()
             
             if exists:
                 raise serializers.ValidationError(
-                    f"Operator {operator.username} is already assigned to this shift center."
+                    f"Operator {operator.username} is already assigned to another center in this shift ({shift_center.shift.shift_code})."
                 )
         return attrs

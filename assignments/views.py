@@ -12,6 +12,14 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.http import HttpResponse
+from accounts.utils import (
+    normalize_mobile, 
+    is_valid_indian_mobile, 
+    generate_operator_username,
+    send_onboarding_request_whatsapp,
+    send_assignment_notification_whatsapp
+)
 import csv
 import io
 
@@ -41,18 +49,30 @@ class OperatorAssignmentViewSet(ExportMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_staff or getattr(user, 'user_type', '') == 'INTERNAL_ADMIN':
-            queryset = OperatorAssignment.objects.select_related('operator', 'role', 'shift_center').all()
-            operator_id = self.request.query_params.get('operator', None)
-            if operator_id:
-                queryset = queryset.filter(operator__uid=operator_id)
+        
+        if getattr(user, 'user_type', '') == 'OPERATOR':
+             return OperatorAssignment.objects.filter(operator=user).select_related('operator', 'role', 'shift_center')
+             
+        # For Admins (Internal, Exam, Client)
+        queryset = OperatorAssignment.objects.select_related('operator', 'role', 'shift_center').all()
+        
+        if getattr(user, 'user_type', '') == 'EXAM_ADMIN' and user.exam:
+            queryset = queryset.filter(shift_center__shift__exam=user.exam)
+        elif getattr(user, 'user_type', '') == 'CLIENT_ADMIN' and user.client:
+             queryset = queryset.filter(shift_center__shift__exam__client=user.client)
+        elif not (user.is_staff or user.is_superuser or getattr(user, 'user_type', '') == 'INTERNAL_ADMIN'):
+             # Fallback for unknown types -> return nothing or self
+             return OperatorAssignment.objects.none()
+
+        operator_id = self.request.query_params.get('operator', None)
+        if operator_id:
+            queryset = queryset.filter(operator__uid=operator_id)
+        
+        shift_center_id = self.request.query_params.get('shift_center', None)
+        if shift_center_id:
+            queryset = queryset.filter(shift_center__uid=shift_center_id)
             
-            shift_center_id = self.request.query_params.get('shift_center', None)
-            if shift_center_id:
-                queryset = queryset.filter(shift_center__uid=shift_center_id)
-                
-            return queryset
-        return OperatorAssignment.objects.filter(operator=user)
+        return queryset
 
     @action(detail=False, methods=['get'], url_path='my-duties')
     def my_duties(self, request):
@@ -63,7 +83,7 @@ class OperatorAssignmentViewSet(ExportMixin, viewsets.ModelViewSet):
              return Response({"error": "Only operators have duties."}, status=status.HTTP_403_FORBIDDEN)
         
         
-        assignments = OperatorAssignment.objects.filter(operator=user).order_by('assigned_at')
+        assignments = OperatorAssignment.objects.filter(operator=user).order_by('-assigned_at')
         serializer = self.get_serializer(assignments, many=True)
         return Response(serializer.data)
 
@@ -74,8 +94,8 @@ class OperatorAssignmentViewSet(ExportMixin, viewsets.ModelViewSet):
         response['Content-Disposition'] = 'attachment; filename="operator_assignment_template.csv"'
         
         writer = csv.writer(response)
-        writer.writerow(['operator_username', 'role_name', 'is_primary', 'notes'])
-        writer.writerow(['jdoe', 'Invigilator', '1', 'Main Hall duties'])
+        writer.writerow(['operator_mobile', 'operator_name', 'role_name', 'is_primary', 'notes'])
+        writer.writerow(['9876543210', 'Rahul Singh', 'Invigilator', '1', 'Main Hall duties'])
         return response
 
     @action(detail=False, methods=['post'], url_path='bulk-import')
@@ -105,18 +125,55 @@ class OperatorAssignmentViewSet(ExportMixin, viewsets.ModelViewSet):
                     # Basic cleaning
                     data = {k: (v.strip() if v else None) for k, v in row.items()}
                     
-                    username = data.get('operator_username')
+                    mobile_raw = data.get('operator_mobile')
+                    name = data.get('operator_name', '').strip()
                     role_name = data.get('role_name')
                     
-                    if not username or not role_name:
-                         results["errors"].append({"row": row, "error": "Missing username or role_name"})
+                    if not mobile_raw or not role_name:
+                         results["errors"].append({"row": row, "error": "Missing mobile or role_name"})
+                         continue
+                    
+                    mobile = normalize_mobile(mobile_raw)
+                    if not is_valid_indian_mobile(mobile):
+                         results["errors"].append({"row": row, "error": f"Invalid mobile: {mobile_raw}"})
                          continue
 
-                    # 1. Find Operator
+                    # 1. Find or Create Operator
                     try:
-                        operator = User.objects.get(username__iexact=username, user_type='OPERATOR')
-                    except User.DoesNotExist:
-                        results["errors"].append({"row": row, "error": f"Operator '{username}' not found"})
+                        operator = User.objects.filter(mobile_primary=mobile, user_type='OPERATOR').first()
+                        
+                        if not operator:
+                            # Create new user
+                            username = generate_operator_username(mobile)
+                            # Collisions loop? (Optional but safe)
+                            for _ in range(5):
+                                if not User.objects.filter(username=username).exists():
+                                    break
+                                username = generate_operator_username(mobile)
+                            
+                            operator = User.objects.create_user(
+                                username=username,
+                                password=None,
+                                user_type="OPERATOR",
+                                status="REQUESTED", # Or ONBOARDING? Let's use REQUESTED to match bulk invite
+                                mobile_primary=mobile,
+                                first_name=name
+                            )
+                            operator.set_unusable_password()
+                            operator.save(update_fields=["password", "first_name", "full_name"])
+                            
+                            # Create Profile
+                            from operators.models import OperatorProfile
+                            OperatorProfile.objects.get_or_create(user=operator)
+                            
+                            # Send Onboarding SMS
+                            try:
+                                send_onboarding_request_whatsapp(mobile, name)
+                            except Exception as e:
+                                print(f"Onboarding SMS failed for {mobile}: {e}")
+
+                    except Exception as e:
+                        results["errors"].append({"row": row, "error": f"User error: {str(e)}"})
                         continue
 
                     # 2. Find Role
@@ -134,24 +191,21 @@ class OperatorAssignmentViewSet(ExportMixin, viewsets.ModelViewSet):
                             'role': role,
                             'assignment_type': 'PRIMARY' if data.get('is_primary') == '1' else 'BUFFER',
                             'remarks': data.get('notes'),
-                            'status': 'PENDING' # Reset status on new bulk import? Or keep? Let's default to PENDING for new.
+                            'status': 'PENDING' 
                         }
                     )
                     
                     if created:
-                        results["created"].append(username)
-                        if operator.mobile_primary:
-                            send_assignment_notification_whatsapp(
-                                mobile=operator.mobile_primary,
-                                role=role.name
-                            )
+                        results["created"].append(operator.username) # Use username or name? Username is unique.
+                        # Send Assignment Notification
+                        try:
+                            send_assignment_notification_whatsapp(mobile, role.name)
+                        except Exception as e:
+                            print(f"Assignment SMS failed for {mobile}: {e}")
                     else:
-                        results["updated"].append(username)
-                        # Optional: Notify on update? User asked to "call this api for for that user... when operator assign".
-                        # Usually creating checks implies assignment. Updating might act as Re-assign.
-                        # I'll stick to 'created' for now to avoid spam on re-imports provided the user expectation is "assign".
-                        # But if an assignment changes role, maybe we should notify?
-                        # Let's keep it simple: notify on creation.
+                        results["updated"].append(operator.username)
+                        # Optional: Send SMS on update?
+                        # send_assignment_notification_whatsapp(mobile, role.name)
 
         except Exception as e:
             return Response({"detail": f"CSV Error: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
@@ -194,8 +248,13 @@ class AssignmentTaskViewSet(viewsets.ModelViewSet):
         if assignment_id:
             qs = qs.filter(assignment__uid=assignment_id)
             
-        if hasattr(user, 'user_type') and user.user_type == 'OPERATOR':
-             return qs.filter(assignment__operator=user)
+        if hasattr(user, 'user_type'):
+            if user.user_type == 'OPERATOR':
+                return qs.filter(assignment__operator=user)
+            elif user.user_type == 'EXAM_ADMIN' and user.exam:
+                return qs.filter(assignment__shift_center__shift__exam=user.exam)
+            elif user.user_type == 'CLIENT_ADMIN' and user.client:
+                return qs.filter(assignment__shift_center__shift__exam__client=user.client)
              
         return qs
 
@@ -204,8 +263,24 @@ class AssignmentTaskViewSet(viewsets.ModelViewSet):
         task = self.get_object()
         from .models import AssignmentTaskEvidence
         
+        # Check if Shift is locked OR Operator has checked out
+        if task.assignment.shift_center.shift.is_locked:
+            return Response(
+                {"detail": "Cannot edit task. The shift is already locked."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        if task.assignment.status == 'COMPLETED':
+            return Response(
+                {"detail": "Cannot edit task. You have already checked out."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         # Handle Evidence (Multiple)
         if 'attachments' in request.FILES:
+            # Clear old evidence if updating
+            AssignmentTaskEvidence.objects.filter(task=task).delete()
+            
             for f in request.FILES.getlist('attachments'):
                 AssignmentTaskEvidence.objects.create(
                     task=task,
@@ -215,6 +290,9 @@ class AssignmentTaskViewSet(viewsets.ModelViewSet):
         
         # Backward compatibility (Single)
         elif 'attachment' in request.FILES:
+             # Clear old evidence if updating
+             AssignmentTaskEvidence.objects.filter(task=task).delete()
+             
              AssignmentTaskEvidence.objects.create(
                 task=task,
                 file=request.FILES['attachment'],

@@ -31,7 +31,11 @@ const router = createRouter({
             meta: { requiresAuth: true },
             children: [
                 { path: '', component: () => import('../views/exam/ExamDashboard.vue'), meta: { title: 'Exam Dashboard' } },
-                // Add Shifts/Centers later if needed, can reuse components or make new ones
+                { path: 'shifts', component: () => import('../views/operations/ExamShiftsList.vue'), meta: { title: 'Exam Shifts' } },
+                { path: 'centers', component: () => import('../views/exam/ExamCenters.vue'), meta: { title: 'Exam Centers' } },
+                { path: 'operators', component: () => import('../views/exam/ExamOperators.vue'), meta: { title: 'Exam Operators' } },
+                { path: 'shifts/:shiftId/centers', component: () => import('../views/operations/ShiftCenters.vue'), meta: { title: 'Shift Centers' } },
+                { path: 'shift-centers/:centerId/assignments', component: () => import('../views/operations/ShiftCenterAssignments.vue'), meta: { title: 'Center Assignments' } },
             ]
         }
     ]

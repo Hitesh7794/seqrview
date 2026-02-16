@@ -10,11 +10,12 @@ from .serializers import (
     ExamCenterSerializer, ShiftCenterSerializer,
     ShiftCenterTaskSerializer
 )
-from common.permissions import IsInternalAdmin
+from common.permissions import IsInternalAdmin, IsExamAdminReadOnly, IsExamAdmin
 import csv
 import io
-from django.http import HttpResponse
+from django.http import HttpResponse, Http404
 from django.db import transaction
+from django.core.exceptions import ValidationError
 
 from common.mixins import ExportMixin
 
@@ -35,7 +36,26 @@ class ExamViewSet(ExportMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
             return [IsInternalAdmin()]
+        # Allow read-only for Exam Admins
         return [permissions.IsAuthenticated()]
+
+    def get_object(self):
+        queryset = self.filter_queryset(self.get_queryset())
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        lookup_value = self.kwargs[lookup_url_kwarg]
+
+        try:
+            # Try to lookup by UID (UUID)
+            obj = queryset.get(uid=lookup_value)
+        except (ValueError, ValidationError, Exam.DoesNotExist):
+            # If invalid UUID or not found, try looking up by exam_code
+            try:
+                obj = queryset.get(exam_code=lookup_value)
+            except Exam.DoesNotExist:
+                raise Http404
+
+        self.check_object_permissions(self.request, obj)
+        return obj
 
     def get_queryset(self):
         user = self.request.user
@@ -54,9 +74,60 @@ class ExamViewSet(ExportMixin, viewsets.ModelViewSet):
             
         return qs.order_by('-created_at')  # Ensure consistent ordering for pagination
 
+    @action(detail=True, methods=['get'])
+    def statistics(self, request, uid=None):
+        exam = self.get_object()
+        from django.utils import timezone
+        today = timezone.now().date()
+        
+        # 1. Shifts
+        total_shifts = exam.shifts.count()
+        shifts_today = exam.shifts.filter(work_date=today).count()
+        completed_shifts = exam.shifts.filter(status='COMPLETED').count()
+        
+        # 2. Centers
+        total_centers = exam.exam_centers.count()
+        active_centers = exam.exam_centers.filter(status='ACTIVE').count()
+        
+        # 3. Operators
+        from assignments.models import OperatorAssignment
+        total_operators = OperatorAssignment.objects.filter(
+            shift_center__shift__exam=exam
+        ).values('operator').distinct().count()
+        
+        operators_active_today = OperatorAssignment.objects.filter(
+            shift_center__shift__exam=exam,
+            shift_center__shift__work_date=today,
+            status__in=['CONFIRMED', 'CHECK_IN', 'COMPLETED']
+        ).values('operator').distinct().count()
+
+        # 4. Candidates (Aggregated from centers)
+        from django.db.models import Sum
+        total_candidates = exam.exam_centers.aggregate(total=Sum('expected_candidates'))['total'] or 0
+
+        return Response({
+            "shifts": {
+                "total": total_shifts,
+                "today": shifts_today,
+                "completed": completed_shifts
+            },
+            "centers": {
+                "total": total_centers,
+                "active": active_centers
+            },
+            "operators": {
+                "total": total_operators,
+                "active_today": operators_active_today
+            },
+            "candidates": {
+                "total": total_candidates
+            }
+        })
+
 class ShiftViewSet(ExportMixin, viewsets.ModelViewSet):
     serializer_class = ShiftSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    # Apply read-only permission for Exam Admins
+    permission_classes = [permissions.IsAuthenticated, IsExamAdminReadOnly | IsInternalAdmin] 
     lookup_field = 'uid'
     basename = 'shift'
 
@@ -97,6 +168,101 @@ class ShiftViewSet(ExportMixin, viewsets.ModelViewSet):
             'task_exceptions': 0 # Placeholder for now
         })
 
+    @action(detail=True, methods=['post'], url_path='bulk-tasks')
+    def bulk_tasks(self, request, uid=None):
+        shift = self.get_object()
+        
+        # Input Validation
+        role_uid = request.data.get('role')
+        tasks_raw = request.data.get('tasks', []) # Could be string if FormData
+        
+        # Handle FormData stringified JSON
+        if isinstance(tasks_raw, str):
+            import json
+            try:
+                tasks_data = json.loads(tasks_raw)
+            except json.JSONDecodeError:
+                return Response({"detail": "Invalid tasks JSON format."}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            tasks_data = tasks_raw
+
+        if not role_uid or not tasks_data:
+            return Response({"detail": "Role and Tasks are required."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        try:
+            from masters.models import RoleMaster
+            role = RoleMaster.objects.get(uid=role_uid)
+        except RoleMaster.DoesNotExist:
+             return Response({"detail": "Invalid Role"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 1. Determine Scope (All centers vs CSV filtered)
+        centers = shift.shift_centers.all()
+        file_obj = request.FILES.get('file')
+        
+        if file_obj:
+            try:
+                decoded_file = file_obj.read().decode('utf-8')
+                reader = csv.DictReader(io.StringIO(decoded_file))
+                # Support both center_code and client_center_code
+                target_codes = [
+                    row.get('center_code', row.get('client_center_code', '')).strip() 
+                    for row in reader 
+                    if row.get('center_code') or row.get('client_center_code')
+                ]
+                if target_codes:
+                    centers = centers.filter(exam_center__client_center_code__in=target_codes)
+                else:
+                    return Response({"detail": "CSV must contain a 'center_code' column."}, status=status.HTTP_400_BAD_REQUEST)
+            except Exception as e:
+                return Response({"detail": f"Error parsing CSV: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+
+        created_count = 0
+        updated_count = 0
+        
+        from .models import ShiftCenterTask
+        
+        with transaction.atomic():
+            for center in centers:
+                for task_def in tasks_data:
+                    task_name = task_def.get('task_name', '').strip()
+                    if not task_name: continue
+                    
+                    # Update or Create
+                    obj, created = ShiftCenterTask.objects.update_or_create(
+                        shift_center=center,
+                        role=role,
+                        task_name=task_name,
+                        defaults={
+                            'task_type': task_def.get('task_type', 'CHECKLIST'),
+                            'is_mandatory': task_def.get('is_mandatory', True)
+                        }
+                    )
+                    if created:
+                        created_count += 1
+                    else:
+                        updated_count += 1
+                        
+        return Response({
+            "detail": f"Processed {len(centers)} centers.",
+            "centers_count": len(centers),
+            "tasks_created": created_count,
+            "tasks_updated": updated_count
+        })
+
+    @action(detail=False, methods=['get'], url_path='bulk-tasks-template')
+    def bulk_tasks_template(self, request):
+        """Generates a CSV template for selective bulk task config."""
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="bulk_task_scope_template.csv"'
+        
+        writer = csv.writer(response)
+        writer.writerow(['center_code'])
+        # Add sample rows
+        writer.writerow(['EX-001'])
+        writer.writerow(['C102-MUM'])
+        
+        return response
+
 class ExamCenterViewSet(ExportMixin, viewsets.ModelViewSet):
     serializer_class = ExamCenterSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -132,7 +298,9 @@ class ShiftCenterViewSet(ExportMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        qs = ShiftCenter.objects.select_related('exam_center', 'shift').all()
+        qs = ShiftCenter.objects.select_related('exam_center', 'shift').annotate(
+            tasks_count=Count('tasks', distinct=True)
+        ).all()
         if user.user_type == 'CLIENT_ADMIN' and user.client:
             qs = qs.filter(exam__client=user.client)
         elif user.user_type == 'EXAM_ADMIN' and user.exam:
@@ -153,13 +321,13 @@ class ShiftCenterViewSet(ExportMixin, viewsets.ModelViewSet):
         
         writer = csv.writer(response)
         writer.writerow([
-            'client_center_code', 'client_center_name', 
-            'city', 'active_capacity', 'address', 
+            'center_code', 'center_name', 
+            'city', 'operators_required', 'address', 
             'latitude', 'longitude', 'incharge_name', 'incharge_phone'
         ])
         writer.writerow([
             'EX-001', 'Sample School Center', 
-            'New Delhi', '200', '123 Test Lane', 
+            'New Delhi', '2', '123 Test Lane', 
             '28.6139', '77.2090', 'John Doe', '9876543210'
         ])
         return response
@@ -190,34 +358,47 @@ class ShiftCenterViewSet(ExportMixin, viewsets.ModelViewSet):
                     # Basic cleaning
                     data = {k: (v.strip() if v else None) for k, v in row.items()}
                     
-                    if not data.get('client_center_code'):
-                         results["errors"].append({"row": row, "errors": "Missing client_center_code"})
+                    # Support both center_code and client_center_code
+                    center_code = data.get('center_code') or data.get('client_center_code')
+                    
+                    if not center_code:
+                         results["errors"].append({"row": row, "errors": "Missing center_code"})
                          continue
 
-                    # 1. Get/Create ExamCenter (This triggers MasterCenter auto-link)
+                    # 1. Get/Create ExamCenter (NO global sync here if exists)
                     exam_center, created = ExamCenter.objects.get_or_create(
                         exam=shift.exam,
-                        client_center_code=data['client_center_code'],
+                        client_center_code=center_code,
                         defaults={
-                            'client_center_name': data.get('client_center_name', data['client_center_code']),
-                            'active_capacity': data.get('active_capacity'),
+                            'client_center_name': data.get('center_name') or data.get('client_center_name') or center_code,
+                            'operators_required': data.get('operators_required') or data.get('active_capacity'),
                             'latitude': data.get('latitude'),
                             'longitude': data.get('longitude'),
                             'incharge_name': data.get('incharge_name'),
                             'incharge_phone': data.get('incharge_phone'),
-                            'client_specific_instructions': data.get('address') # Storing address as instruction for now or we map it if field exists
+                            'client_specific_instructions': data.get('address')
                         }
                     )
                     
-                    # 2. Link to Shift
-                    shift_center, sc_created = ShiftCenter.objects.get_or_create(
+                    # 2. Link to Shift (Snapshot all metadata here for full isolation)
+                    shift_center, sc_created = ShiftCenter.objects.update_or_create(
                         exam=shift.exam,
                         shift=shift,
-                        exam_center=exam_center
+                        exam_center=exam_center,
+                        defaults={
+                            'operators_required': data.get('operators_required') or data.get('active_capacity'),
+                            'center_name': data.get('center_name') or data.get('client_center_name') or exam_center.client_center_name,
+                            'city': data.get('city') or exam_center.city,
+                            'address': data.get('address') or exam_center.client_specific_instructions,
+                            'latitude': data.get('latitude') or exam_center.latitude,
+                            'longitude': data.get('longitude') or exam_center.longitude,
+                            'incharge_name': data.get('incharge_name') or exam_center.incharge_name,
+                            'incharge_phone': data.get('incharge_phone') or exam_center.incharge_phone,
+                        }
                     )
                     
                     results["created"].append({
-                        "center_code": data['client_center_code'],
+                        "center_code": center_code,
                         "status": "Linked" if not sc_created else "Created"
                     })
 
@@ -258,26 +439,21 @@ class ShiftCenterViewSet(ExportMixin, viewsets.ModelViewSet):
                     }
                 )
                 
-                # Update details if provided and center already exists (optional, but good for corrections)
-                if not created: 
-                    updated = False
-                    for field in ['client_center_name', 'active_capacity', 'latitude', 'longitude', 'incharge_name', 'incharge_phone', 'city']:
-                        if request.data.get(field):
-                             setattr(exam_center, field, request.data.get(field))
-                             updated = True
-                    if request.data.get('address'):
-                        exam_center.client_specific_instructions = request.data.get('address')
-                        updated = True
-                    
-                    if updated:
-                        exam_center.save()
-
-
-                # 2. Link to Shift
-                shift_center, sc_created = ShiftCenter.objects.get_or_create(
+                # 2. Link to Shift (Snapshot all metadata here for full isolation)
+                shift_center, sc_created = ShiftCenter.objects.update_or_create(
                     exam=shift.exam,
                     shift=shift,
-                    exam_center=exam_center
+                    exam_center=exam_center,
+                    defaults={
+                        'operators_required': request.data.get('operators_required') or request.data.get('active_capacity'),
+                        'center_name': request.data.get('center_name') or request.data.get('client_center_name') or exam_center.client_center_name,
+                        'city': request.data.get('city') or exam_center.city,
+                        'address': request.data.get('address') or exam_center.client_specific_instructions,
+                        'latitude': request.data.get('latitude') or exam_center.latitude,
+                        'longitude': request.data.get('longitude') or exam_center.longitude,
+                        'incharge_name': request.data.get('incharge_name') or exam_center.incharge_name,
+                        'incharge_phone': request.data.get('incharge_phone') or exam_center.incharge_phone,
+                    }
                 )
                 
                 return Response({
@@ -286,7 +462,7 @@ class ShiftCenterViewSet(ExportMixin, viewsets.ModelViewSet):
                 })
 
         except Exception as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 class ShiftCenterTaskViewSet(viewsets.ModelViewSet):
     serializer_class = ShiftCenterTaskSerializer
@@ -300,3 +476,12 @@ class ShiftCenterTaskViewSet(viewsets.ModelViewSet):
         if shift_center_id:
             qs = qs.filter(shift_center__uid=shift_center_id)
         return qs
+
+    def destroy(self, request, *args, **kwargs):
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except Exception as e:
+            return Response(
+                {"detail": f"Cannot delete task: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )

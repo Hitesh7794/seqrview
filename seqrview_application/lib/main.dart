@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'core/api_client.dart';
 import 'core/token_storage.dart';
@@ -26,11 +27,18 @@ import 'screens/kyc/rejected_screen.dart';
 import 'screens/main_screen.dart';
 
 void main() {
-  final storage = TokenStorage();
-  final api = ApiClient(storage);
-  final session = SessionController(api: api, storage: storage);
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Lock orientation to portrait
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+  ]).then((_) {
+    final storage = TokenStorage();
+    final api = ApiClient(storage);
+    final session = SessionController(api: api, storage: storage);
 
-  runApp(MyApp(session: session));
+    runApp(MyApp(session: session));
+  });
 }
 
 class MyApp extends StatefulWidget {

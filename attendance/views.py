@@ -64,45 +64,43 @@ class AttendanceLogViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Shift is locked. Time period exceeded."}, status=status.HTTP_400_BAD_REQUEST)
 
         from django.utils import timezone
-        from datetime import datetime, timedelta
+        import datetime
         
         # Construct Aware Datetime for Shift Start/End
-        # Assuming DB stores UTC if USE_TZ=True and TIME_ZONE='UTC'
+        # Using project's current timezone (Asia/Kolkata as per settings)
         try:
-            # Combine Date + Time
-            shift_start_naive = datetime.combine(shift.work_date, shift.start_time)
-            shift_end_naive = datetime.combine(shift.work_date, shift.end_time)
+            tz = timezone.get_current_timezone()
             
-            # Make Aware (UTC)
-            shift_start_dt = timezone.make_aware(shift_start_naive, timezone.utc)
-            shift_end_dt = timezone.make_aware(shift_end_naive, timezone.utc)
+            # Combine Date + Time
+            shift_start_naive = datetime.datetime.combine(shift.work_date, shift.start_time)
+            shift_end_naive = datetime.datetime.combine(shift.work_date, shift.end_time)
+            
+            # Make Aware
+            shift_start_dt = timezone.make_aware(shift_start_naive, tz)
+            shift_end_dt = timezone.make_aware(shift_end_naive, tz)
             
             # Windows
             # Check-In: 1 Hour before Start -> End Time
-            check_in_open = shift_start_dt - timedelta(hours=1)
+            check_in_open = shift_start_dt - datetime.timedelta(hours=1)
             check_in_close = shift_end_dt
             
             # Check-Out: Start Time -> End Time + 4 Hours
             check_out_open = shift_start_dt
-            check_out_close = shift_end_dt + timedelta(hours=4)
+            check_out_close = shift_end_dt + datetime.timedelta(hours=4)
             
-            now = timezone.now()
+            now = timezone.now() # Already aware (UTC internally if USE_TZ=True, but comparable)
             activity_type = request.data.get('activity_type')
 
             if activity_type == 'CHECK_IN':
                 if not (check_in_open <= now <= check_in_close):
                     return Response({
-                        "detail": f"Check-In allowed between {check_in_open.strftime('%H:%M')} and {check_in_close.strftime('%H:%M')} UTC."
+                        "detail": f"Check-In allowed between {timezone.localtime(check_in_open).strftime('%H:%M')} and {timezone.localtime(check_in_close).strftime('%H:%M')} IST."
                     }, status=status.HTTP_400_BAD_REQUEST)
                     
             elif activity_type == 'CHECK_OUT':
                  if not (check_out_open <= now <= check_out_close):
-                     # Allow Check-Out logic to be lenient? 
-                     # User Request: "check in checkout can be done during shift time"
-                     # If they are very late, maybe we still allow but warn?
-                     # Sticking to strictly windows for now.
                     return Response({
-                        "detail": f"Check-Out allowed between {check_out_open.strftime('%H:%M')} and {check_out_close.strftime('%H:%M')} UTC."
+                        "detail": f"Check-Out allowed between {timezone.localtime(check_out_open).strftime('%H:%M')} and {timezone.localtime(check_out_close).strftime('%H:%M')} IST."
                     }, status=status.HTTP_400_BAD_REQUEST)
 
         except Exception as e:
@@ -131,11 +129,11 @@ class AttendanceLogViewSet(viewsets.ModelViewSet):
         # We already fetched 'assignment', so we can check the flag
         is_selfie_required = assignment.shift_center.exam.is_selfie_enabled
         
-        if activity_type == 'CHECK_IN' and is_selfie_required:
+        if is_selfie_required:
             # Selfie is mandatory for Check-In
             selfie_file = request.FILES.get('selfie')
             if not selfie_file:
-                 return Response({"detail": "Selfie is required for Check-In"}, status=status.HTTP_400_BAD_REQUEST)
+                 return Response({"detail": f"Selfie is required for {activity_type.replace('_', ' ').title()}"}, status=status.HTTP_400_BAD_REQUEST)
             
             # Read bytes for API
             selfie_bytes = selfie_file.read()

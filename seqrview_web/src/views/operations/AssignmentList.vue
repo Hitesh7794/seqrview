@@ -2,7 +2,7 @@
   <div>
     <div class="flex justify-between items-center mb-6">
       <h1 class="text-2xl font-bold text-gray-800">Assignments</h1>
-      <div class="space-x-2">
+      <div class="space-x-2" v-if="canManage">
         <button class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
           Bulk Upload
         </button>
@@ -48,7 +48,7 @@
               </span>
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-              <a href="#" class="text-indigo-600 hover:text-indigo-900">Edit</a>
+              <a href="#" v-if="canManage" class="text-indigo-600 hover:text-indigo-900">Edit</a>
             </td>
           </tr>
            <tr v-if="assignments.length === 0">
@@ -61,10 +61,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
+import { useAuthStore } from '../../stores/auth';
 import api from '../../api/axios';
 
 const assignments = ref([]);
+const authStore = useAuthStore();
+const canManage = computed(() => {
+    const type = authStore.user?.user_type;
+    return type === 'INTERNAL_ADMIN' || authStore.user?.is_superuser; 
+});
 
 onMounted(async () => {
   try {

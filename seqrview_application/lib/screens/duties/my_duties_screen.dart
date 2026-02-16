@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../app/session_controller.dart';
 import '../../models/assignment.dart';
 import '../../models/assignment.dart';
+import '../attendance/attendance_face_match_screen.dart';
 import '../support/report_issue_screen.dart';
 import 'duty_detail_screen.dart';
 
@@ -250,7 +251,7 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
 
 
     try {
-      // 1. Permissions (Must be before loading)
+      // 1. Permissions
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -258,20 +259,7 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
       }
       if (permission == LocationPermission.deniedForever) throw "Location permissions are permanently denied.";
 
-      // 2. Selfie (Interactive - Must be before loading)
-      String? selfiePath;
-      if (isCheckIn && exam.isSelfieEnabled) {
-        final ImagePicker picker = ImagePicker();
-        final XFile? photo = await picker.pickImage(
-          source: ImageSource.camera,
-          maxWidth: 600,
-          imageQuality: 80,
-        );
-        if (photo == null) return; // User cancelled camera
-        selfiePath = photo.path;
-      }
-
-      // 3. Show Loading Dialog (Everything after here is background)
+      // 2. Show Location Fetching Dialog
       if (mounted) {
         showDialog(
           context: context,
@@ -288,7 +276,7 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
                     const CircularProgressIndicator(),
                     const SizedBox(height: 24),
                     Text(
-                      isCheckIn ? "Verifying Identity..." : "Processing...",
+                      "Verifying Location...",
                       style: TextStyle(
                         fontSize: 16, 
                         fontWeight: FontWeight.w600,
@@ -296,8 +284,98 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
                       ),
                     ),
                     const SizedBox(height: 8),
+                    const Text(
+                      "Checking proximity to center...",
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+        timeLimit: const Duration(seconds: 30),
+      ).catchError((e) {
+        if (mounted) Navigator.pop(context); // Close "Verifying Location"
+        throw "Could not get your location. Please ensure GPS is on.";
+      });
+
+      final dist = Geolocator.distanceBetween(
+        position.latitude, position.longitude, targetLat, targetLong
+      );
+
+      // Distance check
+      if (exam.isGeofencingEnabled && dist > radius) {
+        if (mounted) Navigator.pop(context); // Close "Verifying Location"
+        if (mounted) {
+          showDialog(
+            context: context, 
+            builder: (ctx) => AlertDialog(
+              title: const Text("Too Far"),
+              content: Text("You are ${dist.toInt()}m away from the center. Max allowed is ${radius}m."),
+              actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("OK"))],
+            )
+          );
+        }
+        return; 
+      }
+
+      if (mounted) Navigator.pop(context); // Close "Verifying Location"
+
+      // 3. Face Verification (Interactive - Only if location passes)
+      if (exam.isSelfieEnabled) {
+        if (mounted) {
+          final success = await Navigator.push<bool>(
+            context,
+            MaterialPageRoute(
+              builder: (ctx) => AttendanceFaceMatchScreen(
+                session: widget.session,
+                assignmentId: assignment.uid,
+                activityType: isCheckIn ? 'CHECK_IN' : 'CHECK_OUT',
+                latitude: position.latitude,
+                longitude: position.longitude,
+              ),
+            ),
+          );
+          
+          if (success == true) {
+            _loadDuties(); // Refresh everything
+          }
+        }
+        return; // Logic finished inside the screen
+      }
+
+      // 4. Final Submission Loading (Only if Face Match is skipped)
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext context) {
+            return Dialog(
+              backgroundColor: _isDark ? const Color(0xFF1F2937) : Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 24),
                     Text(
-                      "Fetching location & syncing...",
+                      isCheckIn ? "Checking In..." : "Checking Out...",
+                      style: TextStyle(
+                        fontSize: 16, 
+                        fontWeight: FontWeight.w600,
+                        color: _isDark ? Colors.white : Colors.black87
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      "Syncing with server...",
                       style: TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                   ],
@@ -309,43 +387,13 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
       }
 
       try {
-        // 4. Get Position
-        final position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.medium,
-          timeLimit: const Duration(seconds: 30),
-        ).catchError((e) {
-          throw "Could not get your location. Please ensure GPS is on.";
-        });
-
-        // 5. Distance check
-        final dist = Geolocator.distanceBetween(
-          position.latitude, position.longitude, targetLat, targetLong
-        );
-
-        if (exam.isGeofencingEnabled && dist > radius) {
-          if (mounted) Navigator.pop(context); // Close loading
-          if (mounted) {
-            showDialog(
-              context: context, 
-              builder: (ctx) => AlertDialog(
-                title: const Text("Too Far"),
-                content: Text("You are ${dist.toInt()}m away from the center. Max allowed is ${radius}m."),
-                actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("OK"))],
-              )
-            );
-          }
-          return; 
-        }
-
-        // 6. Call API
         if (isCheckIn) {
-          await widget.session.api.checkIn(assignment.uid, position.latitude, position.longitude, selfiePath);
+          await widget.session.api.checkIn(assignment.uid, position.latitude, position.longitude, null);
         } else {
-          await widget.session.api.checkOut(assignment.uid, position.latitude, position.longitude);
+          await widget.session.api.checkOut(assignment.uid, position.latitude, position.longitude, null);
         }
 
-        // 7. Success
-        if (mounted) Navigator.pop(context); // Close loading
+        if (mounted) Navigator.pop(context); // Close loading dialog
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -356,7 +404,7 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
         }
 
       } catch (e) {
-        if (mounted) Navigator.pop(context); // Close loading
+        if (mounted) Navigator.pop(context); // Close "Checking In"
         rethrow;
       }
 
@@ -685,6 +733,26 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
                 ),
               ),
 
+              const SizedBox(height: 6),
+
+              // Task Count
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Icon(Icons.checklist_rtl_rounded, size: 14, color: Colors.grey[500]),
+                    const SizedBox(width: 8),
+                    Text(
+                      "Assigned Tasks: ${assignment.tasks.length}",
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey[500],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
               const SizedBox(height: 16),
 
               // Footer Action
@@ -692,18 +760,18 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 child: Column(
                   children: [
-                    if (isPending)
-                      _buildPrimaryButton("CONFIRM DUTY", () => _confirmAssignment(assignment)),
-                    
-                    if (status == 'CONFIRMED')
-                      _buildPrimaryButton("I HAVE REACHED (CHECK IN)", 
-                          () => _handleLocationAction(assignment, true), 
-                          color: Colors.green),
+                    if (_isExpired(assignment) || assignment.isCompleted)
+                      _buildTaskSummary(assignment)
+                    else ...[
+                      if (isPending)
+                        _buildPrimaryButton("CONFIRM DUTY", () => _confirmAssignment(assignment)),
+                      
+                      if (status == 'CONFIRMED')
+                        _buildPrimaryButton("I HAVE REACHED (CHECK IN)", 
+                            () => _handleLocationAction(assignment, true), 
+                            color: Colors.green),
 
-                    if (assignment.isCheckedIn) ...[
-                      if (_isExpired(assignment) || assignment.isCompleted)
-                        _buildTaskSummary(assignment)
-                      else ...[
+                      if (assignment.isCheckedIn) ...[
                         _buildPrimaryButton("DUTY OVER (CHECK OUT)", 
                             () => _handleLocationAction(assignment, false), 
                             color: Colors.red),
@@ -758,10 +826,10 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
                           ],
                         ),
                       ],
-                    ],
 
-                    if (!isActive && !isPending && !assignment.isCheckedIn)
-                      _buildPrimaryButton("VIEW HISTORY", () {}, outline: true),
+                      if (!isActive && !isPending && !assignment.isCheckedIn)
+                        _buildPrimaryButton("VIEW HISTORY", () {}, outline: true),
+                    ],
                   ],
                 ),
               ),
@@ -836,6 +904,26 @@ class _MyDutiesScreenState extends State<MyDutiesScreen> with SingleTickerProvid
   }
 
   Widget _buildTaskSummary(Assignment assignment) {
+    if (assignment.tasks.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: _isDark ? Colors.blueGrey.withOpacity(0.1) : Colors.blueGrey[50],
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(
+          "No tasks recorded for this duty.",
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 14,
+            fontStyle: FontStyle.italic,
+            color: _isDark ? Colors.grey[400] : Colors.grey[600],
+          ),
+        ),
+      );
+    }
+
     final doneCount = assignment.tasks.where((t) => t.isDone).length;
     final totalCount = assignment.tasks.length;
     final accentColor = _getStatusColor(assignment.status);

@@ -240,56 +240,48 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
               : Column(
                   children: [
                     // -- Unified Gradient Header --
+                    // -- Seamless Header --
                     Container(
                       width: double.infinity,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: _isDark 
-                                ? [const Color(0xFF1F2937), const Color(0xFF111827)] // Dark Gradient
-                                : [const Color(0xFFFFFFFF), const Color(0xFFE8E3EF)], // User's Light Gradient
-                          ),
-                          boxShadow: [
-                             BoxShadow(
-                               color: Colors.black.withOpacity(0.05),
-                               blurRadius: 10, offset: const Offset(0, 5)
-                             )
-                          ]
-                        ),
-                        child: SafeArea(
-                          bottom: false,
-                          child: Column(
-                            children: [
-                              // 1. Top Bar (Title + Settings)
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Image.asset(
-                                      'assets/images/logo.png',
-                                      height: 32,
-                                    ),
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        GlobalSupportButton(isDark: _isDark),
-                                        const SizedBox(width: 8),
-                                        IconButton(
+                      child: SafeArea(
+                        bottom: false,
+                        child: Column(
+                          children: [
+                            // 1. Top Bar (Title + Settings)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Image.asset(
+                                    'assets/images/logo.png',
+                                    height: 32,
+                                  ),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      _buildHeaderIcon(
+                                        child: GlobalSupportButton(isDark: _isDark),
+                                        isDark: _isDark,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      _buildHeaderIcon(
+                                        child: IconButton(
                                           visualDensity: VisualDensity.compact,
                                           padding: EdgeInsets.zero,
                                           constraints: const BoxConstraints(),
                                           style: IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
                                           onPressed: _showSettingsModal,
-                                          icon: Icon(Icons.settings, color: _isDark ? Colors.white : Colors.black87),
+                                          icon: Icon(Icons.settings, color: _isDark ? Colors.white : Colors.black87, size: 22),
                                           tooltip: 'Settings',
                                         ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
+                                        isDark: _isDark,
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ),
+                            ),
                               
                               const SizedBox(height: 10),
 
@@ -695,6 +687,18 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
       default:
         return status ?? 'N/A';
     }
+  }
+
+  Widget _buildHeaderIcon({required Widget child, required bool isDark}) {
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05),
+        shape: BoxShape.circle,
+      ),
+      child: Center(child: child),
+    );
   }
 }
 

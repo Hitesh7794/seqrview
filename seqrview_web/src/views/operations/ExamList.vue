@@ -223,7 +223,15 @@ const isCreateModalOpen = ref(false);
 const editingExam = ref(null);
 
 const authStore = useAuthStore();
-const canManageExams = computed(() => authStore.user?.user_type !== 'CLIENT_ADMIN');
+const canManageExams = computed(() => {
+    const type = authStore.user?.user_type;
+    // Only Internal Admin or Superuser usually. 
+    // If Client Admin needs to manage, keep them. But prompt says "if i login exam ... it must view only mode".
+    // Previously it was !== 'CLIENT_ADMIN'. 
+    // Let's assume Internal Admin is the primary manager. 
+    // If Client Admin was restricted, Exam Admin should also be restricted.
+    return type === 'INTERNAL_ADMIN' || authStore.user?.is_superuser;
+});
 
 const openCreateModal = () => {
     if (!canManageExams.value) return;
