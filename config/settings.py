@@ -1,6 +1,9 @@
 
 from pathlib import Path
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -9,13 +12,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-g11ybgze*e*u-e$zq!aob#a$%m_x_xddocsz@ej(#)w4juma3l'
+SECRET_KEY = os.getenv('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DEBUG', 'True') == 'True'
+DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
 # ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '127.0.0.1,localhost','').split(',')
-ALLOWED_HOSTS =('127.0.0.1','localhost','6db1-115-241-42-138.ngrok-free.app')
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
 # Production Security Settings
 if not DEBUG:
     SECURE_SSL_REDIRECT = True
@@ -101,14 +104,23 @@ import os
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.getenv("DB_NAME", "seqrview_db"),
-        "USER": os.getenv("DB_USER", "hitesh_seqrview"),
-        "PASSWORD": os.getenv("DB_PASSWORD", "hitesh77"),
-        "HOST": os.getenv("DB_HOST", "localhost"),
-        "PORT": os.getenv("DB_PORT", "5432"),
+        "NAME": "seqrview_db",
+        "USER": "hitesh_seqrview",
+        "PASSWORD": "hitesh77",
+        "HOST": "localhost",
+        "PORT": "5432",
     }
 }
-
+# DATABASES = {
+#     "default": {
+#         "ENGINE": os.getenv("DB_ENGINE", "django.db.backends.postgresql"),
+#         "NAME": os.getenv("DB_NAME"),
+#         "USER": os.getenv("DB_USER"),
+#         "PASSWORD": os.getenv("DB_PASSWORD"),
+#         "HOST": os.getenv("DB_HOST"),
+#         "PORT": os.getenv("DB_PORT"),
+#     }
+# }
 
 
 # Password validation
@@ -215,18 +227,18 @@ CORS_ALLOW_HEADERS = [
 
 
 
-SUREPASS_BASE_URL = os.getenv("SUREPASS_BASE_URL", "https://kyc-api.surepass.io/api/v1")
-SUREPASS_TOKEN = os.getenv("SUREPASS_TOKEN", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmcmVzaCI6ZmFsc2UsImlhdCI6MTc0ODk0NTU1MSwianRpIjoiYzc1ZWI1NzEtNWQxNy00MDkzLWIwZTctODljZmY4NDYxYmM0IiwidHlwZSI6ImFjY2VzcyIsImlkZW50aXR5IjoidGVuYW50X25lUEFjdk1WWW5NdGtIdFd0WndCIiwibmJmIjoxNzQ4OTQ1NTUxLCJleHAiOjIzNzk2NjU1NTEsImVtYWlsIjoiaW5ub3ZhdGl2aWV3QHN1cmVwYXNzLmlvIiwidGVuYW50X2lkIjoidGVuYW50X25lUEFjdk1WWW5NdGtIdFd0WndCIiwidXNlcl9jbGFpbXMiOnsic2NvcGVzIjpbInVzZXIiXX19.mcwfBChCM7U5g26eYEOcIo1HB_LT86GBFsTkSqHkjBU")  
+SUREPASS_BASE_URL = os.getenv("SUREPASS_BASE_URL")
+SUREPASS_TOKEN = os.getenv("SUREPASS_TOKEN")  
 
 KYC_SESSION_TTL_MINUTES = int(os.getenv("KYC_SESSION_TTL_MINUTES", "30"))
 
 KYC_NAME_MATCH_THRESHOLD = float(os.getenv("KYC_NAME_MATCH_THRESHOLD", "0.80"))
 KYC_FACE_MATCH_THRESHOLD = float(os.getenv("KYC_FACE_MATCH_THRESHOLD", "70.0"))
 
-KYC_DEDUPE_SECRET = os.getenv("KYC_DEDUPE_SECRET", "hiteshDon")
+KYC_DEDUPE_SECRET = os.getenv("KYC_DEDUPE_SECRET")
 
 
-OTP_SECRET = os.getenv("OTP_SECRET", "hiteshjangid")
+OTP_SECRET = os.getenv("OTP_SECRET")
 OTP_TTL_MINUTES = int(os.getenv("OTP_TTL_MINUTES", "5"))
 OTP_MAX_ATTEMPTS = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
 
@@ -234,7 +246,7 @@ OTP_MAX_ATTEMPTS = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
 AADHAAR_OTP_COOLDOWN_SECONDS = 60
 
 # AuthKey Configuration
-AUTHKEY_API_KEY = os.getenv("AUTHKEY_API_KEY", "877f65eb773cee5d")
-AUTHKEY_SID = os.getenv("AUTHKEY_SID", "20315")
-AUTHKEY_COMPANY = os.getenv("AUTHKEY_COMPANY", "seQRview")
-AUTHKEY_WID = os.getenv("AUTHKEY_WID", "9564")
+AUTHKEY_API_KEY = os.getenv("AUTHKEY_API_KEY")
+AUTHKEY_SID = os.getenv("AUTHKEY_SID")
+AUTHKEY_COMPANY = os.getenv("AUTHKEY_COMPANY")
+AUTHKEY_WID = os.getenv("AUTHKEY_WID")

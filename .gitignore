@@ -26,3 +26,6 @@ seqrview_web/*.ntvs*
 seqrview_web/*.njsproj
 seqrview_web/*.sln
 seqrview_web/*.sw?
+
+# Environment variables
+.env

@@ -7,6 +7,8 @@ from django.db.models import Count, Q
 from assignments.models import OperatorAssignment
 from support.models import Incident
 
+from operations.models import Exam
+
 class DailySummaryView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -16,13 +18,16 @@ class DailySummaryView(APIView):
         # Scoping logic
         assignments = OperatorAssignment.objects.all()
         incidents = Incident.objects.all()
+        exams = Exam.objects.all()
 
         if user.user_type == 'CLIENT_ADMIN' and user.client:
             assignments = assignments.filter(shift_center__exam__client=user.client)
             incidents = incidents.filter(assignment__shift_center__exam__client=user.client)
+            exams = exams.filter(client=user.client)
         elif user.user_type == 'EXAM_ADMIN' and user.exam:
             assignments = assignments.filter(shift_center__exam=user.exam)
             incidents = incidents.filter(assignment__shift_center__exam=user.exam)
+            exams = exams.filter(pk=user.exam.pk)
         elif user.user_type == 'INTERNAL_ADMIN' or user.is_superuser:
             pass # Keep all
         else:
@@ -38,7 +43,19 @@ class DailySummaryView(APIView):
         open_incidents = incidents.filter(status='OPEN').count()
         high_priority = incidents.filter(priority__in=['HIGH', 'CRITICAL'], status='OPEN').count()
         
+        # Exam Stats
+        total_exams = exams.count()
+        draft_exams = exams.filter(status='DRAFT').count()
+        live_exams = exams.filter(status='LIVE').count()
+        completed_exams = exams.filter(status='COMPLETED').count()
+        configuring_exams = exams.filter(status='CONFIGURING').count()
+        
         return Response({
+            "total_exams": total_exams,
+            "draft": draft_exams,
+            "live": live_exams,
+            "completed": completed_exams,
+            "configuring": configuring_exams,
             "overview": {
                 "total_duties": total_assigned,
                 "present": checked_in + completed,
